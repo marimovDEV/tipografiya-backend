@@ -1,0 +1,1656 @@
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
+import uuid
+
+
+class BaseModel(models.Model):
+    """
+    Abstract base model for all models with enterprise features:
+    - UUID primary key
+    - Audit fields (created_at, updated_at, created_by, updated_by)
+    - Soft delete
+    - Optimistic locking (version)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # Note: created_by and updated_by will be added after User model
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    version = models.IntegerField(default=1, help_text="Optimistic locking version")
+    
+    class Meta:
+        abstract = True
+    
+    def delete(self, using=None, keep_parents=False):
+        """Soft delete by default"""
+        self.is_deleted = True
+        self.save(using=using)
+    
+    def hard_delete(self, using=None, keep_parents=False):
+        """Actual deletion if needed"""
+        super().delete(using=using, keep_parents=keep_parents)
+
+class User(AbstractUser):
+    ROLE_CHOICES = (
+        ('admin', 'Admin'),
+        ('project_manager', 'Project Manager'),
+        ('warehouse', 'Warehouse'),
+        ('cutter', 'Cutter'),
+        ('printer', 'Printer'),
+        ('finishing', 'Finishing'),
+        ('qc', 'QC'),
+        ('accountant', 'Accountant'),
+    )
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='project_manager')
+    avatar_url = models.URLField(blank=True, null=True)
+
+class PricingSettings(models.Model):
+    # Material Costs
+    paper_price_per_kg = models.DecimalField(max_digits=20, decimal_places=2, default=15000)
+    ink_price_per_kg = models.DecimalField(max_digits=20, decimal_places=2, default=120000)
+    lacquer_price_per_kg = models.DecimalField(max_digits=20, decimal_places=2, default=100000)
+    
+    # Operational Costs
+    plate_cost = models.DecimalField(max_digits=20, decimal_places=2, default=40000) # Qolip narxi
+    setup_cost = models.DecimalField(max_digits=20, decimal_places=2, default=50000) # Stanok sozlash
+    run_cost_per_box = models.DecimalField(max_digits=20, decimal_places=2, default=50) # Bir dona quti uchun ish haqi/amortizatsiya
+    
+    # General
+    profit_margin_percent = models.IntegerField(default=20)
+    exchange_rate = models.DecimalField(max_digits=20, decimal_places=2, default=12800)
+    tax_percent = models.IntegerField(default=0) # QQS %
+    
+    # Waste Percentages
+    waste_percentage_paper = models.IntegerField(default=5)
+    waste_percentage_ink = models.IntegerField(default=10)
+    waste_percentage_lacquer = models.IntegerField(default=8)
+    
+    # Advanced Production
+    machine_hourly_rate = models.DecimalField(max_digits=20, decimal_places=2, default=50000)
+    auto_update_currency = models.BooleanField(default=False)
+    
+    # Default Assignees
+    default_warehouse_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='def_warehouse')
+    default_printer_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='def_printer')
+    default_cutter_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='def_cutter')
+    default_finisher_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='def_finisher')
+    default_qc_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='def_qc')
+
+    # Dynamic Options & Profiles
+    print_colors_options = models.JSONField(default=list, blank=True)
+    print_type_options = models.JSONField(default=list, blank=True)
+    cutting_type_options = models.JSONField(default=list, blank=True)
+    pricing_profiles = models.JSONField(default=dict, blank=True) # {"VIP": 15, "Standard": 20, "Wholesale": 10}
+    
+    # Financial Settings (New)
+    payment_type_options = models.JSONField(default=list, blank=True) # ["cash", "card", "transfer"]
+    receipt_format_options = models.JSONField(default=dict, blank=True) # {"show_profit_to_client": false}
+    show_profit_to_client = models.BooleanField(default=False)
+    default_pricing_profile = models.CharField(max_length=50, default='Standard')
+    enable_employee_efficiency = models.BooleanField(default=False)
+    
+    # Phase 2: Advanced Pricing
+    scenario_pricing = models.JSONField(default=dict, blank=True, help_text="{\"Standard\": 1.0, \"Express\": 1.5, \"Night\": 1.3}")
+    inventory_valuation_method = models.CharField(
+        max_length=20,
+        choices=(('fifo', 'FIFO'), ('average', 'Average'), ('last', 'Last Cost')),
+        default='fifo',
+        help_text="Method for calculating material costs"
+    )
+    price_lock_enabled = models.BooleanField(default=True, help_text="Lock prices when order approved")
+
+    class Meta:
+        verbose_name = "Pricing Settings"
+        verbose_name_plural = "Pricing Settings"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super(PricingSettings, self).save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        # Set default pricing profiles if not exists
+        if created or not obj.pricing_profiles:
+            obj.pricing_profiles = {
+                "VIP": 15,
+                "Standard": 20,
+                "Wholesale": 10
+            }
+            obj.payment_type_options = ["cash", "card", "transfer"]
+            obj.save()
+        return obj
+
+    def __str__(self):
+        return "Global Pricing Settings"
+
+class Client(models.Model):
+    STATUS_CHOICES = (
+        ('new', 'Yangi'),
+        ('regular', 'Doimiy'),
+        ('vip', 'VIP'),
+        ('blacklist', 'Qora ro\'yxat'),
+    )
+    PRICING_PROFILE_CHOICES = (
+        ('VIP', 'VIP'),
+        ('Standard', 'Standard'),
+        ('Wholesale', 'Wholesale'),
+    )
+    full_name = models.CharField(max_length=255)
+    company = models.CharField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    
+    # New Fields
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    is_active = models.BooleanField(default=True)
+    telegram_id = models.CharField(max_length=50, blank=True, null=True)
+    pricing_profile = models.CharField(max_length=20, choices=PRICING_PROFILE_CHOICES, default='Standard')
+    
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_clients')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.full_name
+
+# ... (Material, Product, Order classes skipped/unchanged) ...
+
+class Transaction(models.Model):
+    TRANSACTION_TYPES = (
+        ('income', 'Kirim (Income)'),
+        ('expense', 'Chiqim (Expense)'),
+    )
+    PAYMENT_METHODS = (
+        ('cash', 'Naqd'),
+        ('card', 'Karta'),
+        ('transfer', 'Pul o\'tkazish'),
+    )
+
+    type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    category = models.CharField(max_length=100) # e.g., "Material Purchase", "Order Payment"
+    description = models.TextField(blank=True, null=True)
+    
+    # Linked Client for payments
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash')
+    
+    date = models.DateField(auto_now_add=True) # or editable? User might want to backdate. Let's make it editable default now.
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+class Supplier(models.Model):
+    name = models.CharField(max_length=255)
+    contact_person = models.CharField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+class Material(models.Model):
+    name = models.CharField(max_length=255)
+    sku = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    category = models.CharField(max_length=100, blank=True, null=True) # qogoz, siyoh, lak, adhesive, etc.
+    unit = models.CharField(max_length=20, blank=True, null=True) # kg, dona, list
+    current_stock = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    min_stock = models.DecimalField(max_digits=20, decimal_places=2, default=10)
+    price_per_unit = models.DecimalField(max_digits=20, decimal_places=2, default=0) # Average or last price
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+class MaterialBatch(models.Model):
+    QUALITY_STATUS_CHOICES = (
+        ('ok', 'OK'),
+        ('blocked', 'Blocked'),
+        ('quarantine', 'Quarantine'),
+    )
+    
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='batches')
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
+    batch_number = models.CharField(max_length=100, blank=True, null=True)
+    initial_quantity = models.DecimalField(max_digits=20, decimal_places=2)
+    current_quantity = models.DecimalField(max_digits=20, decimal_places=2)
+    cost_per_unit = models.DecimalField(max_digits=20, decimal_places=2)
+    received_date = models.DateField(auto_now_add=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    color = models.CharField(max_length=50, blank=True, null=True)  # For warehouse color selection
+    
+    # Quality status (PrintERP TZ Section 6)
+    quality_status = models.CharField(
+        max_length=20,
+        choices=QUALITY_STATUS_CHOICES,
+        default='ok',
+        help_text="Sifat holati: OK, Blocked, Quarantine"
+    )
+    block_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Bloklash sababi"
+    )
+    blocked_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Bloklangan vaqt"
+    )
+    blocked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='blocked_batches',
+        help_text="Kim bloklagan"
+    )
+
+    def __str__(self):
+        return f"{self.material.name} - {self.batch_number} ({self.current_quantity} {self.material.unit})"
+
+    class Meta:
+        ordering = ['received_date'] # For FIFO
+    
+    def block(self, user, reason):
+        """Block this batch from use"""
+        self.quality_status = 'blocked'
+        self.block_reason = reason
+        self.blocked_at = timezone.now()
+        self.blocked_by = user
+        self.save()
+    
+    def unblock(self):
+        """Unblock this batch"""
+        self.quality_status = 'ok'
+        self.block_reason = None
+        self.blocked_at = None
+        self.blocked_by = None
+        self.save()
+    
+    @property
+    def is_usable(self):
+        """Check if batch can be used in production"""
+        return self.quality_status == 'ok' and self.is_active and self.current_quantity > 0
+    
+    @property
+    def is_expiring_soon(self, days=30):
+        """Check if batch is expiring within specified days"""
+        if not self.expiry_date:
+            return False
+        from datetime import timedelta
+        threshold = timezone.now().date() + timedelta(days=days)
+        return self.expiry_date <= threshold
+
+class Product(models.Model):
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    sku = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    box_type = models.CharField(max_length=100, blank=True, null=True)
+    current_stock = models.IntegerField(default=0)
+    price = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    category = models.CharField(max_length=100, default='ready_good')
+    default_dimensions = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.sku})"
+
+class WarehouseLog(models.Model):
+    LOG_TYPES = (
+        ('in', 'Kirim'),
+        ('out', 'Chiqim'),
+        ('audit', 'Tuzatish (Audit)'),
+    )
+    material = models.ForeignKey(Material, on_delete=models.SET_NULL, null=True, blank=True)
+    material_batch = models.ForeignKey(MaterialBatch, on_delete=models.SET_NULL, null=True, blank=True)
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)
+    change_amount = models.DecimalField(max_digits=20, decimal_places=2)
+    type = models.CharField(max_length=10, choices=LOG_TYPES)
+    order = models.ForeignKey('Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='warehouse_logs')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+class Order(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Yangi'),
+        ('approved', 'Tasdiqlandi'),
+        ('in_production', 'Ishlab chiqarishda'),
+        ('ready', 'Tayyor (Sklad)'),
+        ('delivered', 'Yetkazildi'),
+        ('completed', 'Yakunlandi'),
+        ('canceled', 'Bekor qilindi'),
+    )
+    
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='orders')
+    order_number = models.CharField(max_length=50, unique=True, editable=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Specs
+    box_type = models.CharField(max_length=100, blank=True, null=True)
+    dimensions = models.JSONField(blank=True, null=True)
+    paper_type = models.CharField(max_length=100, blank=True, null=True)
+    paper_density = models.IntegerField(blank=True, null=True)
+    print_colors = models.CharField(max_length=50, blank=True, null=True)
+    print_type = models.CharField(max_length=100, blank=True, null=True)
+    lacquer_type = models.CharField(max_length=100, blank=True, null=True)
+    cutting_type = models.CharField(max_length=100, blank=True, null=True)
+    color = models.CharField(max_length=100, blank=True, null=True, help_text="Warehouse color selection")
+    additional_processing = models.TextField(blank=True, null=True)
+    
+    # Technical & Files
+    mockup_url = models.URLField(max_length=500, blank=True, null=True, help_text="Dizayn maketi linki")
+    responsible_designer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_orders')
+    notes = models.TextField(blank=True, null=True, help_text="Ichki izohlar")
+
+    # New Fields for Dimensions
+    paper_width = models.FloatField(blank=True, null=True, help_text="Paper Width (cm)")
+    paper_height = models.FloatField(blank=True, null=True, help_text="Paper Height (cm)")
+    
+    quantity = models.IntegerField(default=1)
+    price_per_unit = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
+    total_price = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
+    total_cost = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True, help_text="Tannarx")
+    deadline = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True, help_text="Buyurtma yakunlangan sana")
+    
+    
+    # Pricing & Calculation
+    pricing_profile_used = models.CharField(max_length=20, default='Standard', blank=True)
+    calculation_breakdown = models.JSONField(blank=True, null=True, help_text="Detailed cost breakdown")
+    
+    # Phase 2: Price Locking
+    price_locked = models.BooleanField(default=False, help_text="If True, price cannot be recalculated")
+    price_lock_version = models.IntegerField(null=True, blank=True, help_text="PriceVersion used when locked")
+    price_lock_snapshot = models.JSONField(blank=True, null=True, help_text="Full pricing data snapshot")
+    manual_override = models.BooleanField(default=False, help_text="Price manually overridden by admin")
+    manual_override_reason = models.TextField(blank=True, null=True, help_text="Why price was overridden")
+    manual_override_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='price_overrides')
+    
+    # Phase 7: Product Template Integration (PrintERP TZ Section 4)
+    product_template = models.ForeignKey(
+        'ProductTemplate',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        help_text="Product template used for this order"
+    )
+    material_validation_passed = models.BooleanField(
+        default=False,
+        help_text="Material availability validated before approval"
+    )
+    material_suggestions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Alternative materials if primary unavailable"
+    )
+    
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_orders')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # We want order_number to be the ID (1, 2, 3...)
+        # Since ID is generated after save, we handle it sequentially
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        if is_new and not self.order_number:
+            self.order_number = str(self.pk)
+            # Avoid infinite loop by using update_fields if possible, or simple save
+            # But simpler to just save again
+            super().save(update_fields=['order_number'])
+
+    def __str__(self):
+        return self.order_number
+
+class ProductionStep(models.Model):
+    STEP_CHOICES = (
+        ('queue', 'Navbatda'),
+        ('cutting', 'Kesish'),
+        ('printing', 'Chop etish'),
+        ('gluing', 'Yelimlash'),
+        ('drying', 'Quritish'),
+        ('packaging', 'Qadoqlash'),
+        ('ready', 'Tayyor (Sklad)'),
+    )
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    )
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='production_steps')
+    step = models.CharField(max_length=20, choices=STEP_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Phase 3: Production Scheduling (PrintERP TZ Section 7)
+    machine = models.ForeignKey(
+        'MachineSettings',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_steps',
+        help_text="Biriktirilgan stanok"
+    )
+    depends_on_step = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dependent_steps',
+        help_text="Ushbu bosqich qaysi bosqichga bog'liq"
+    )
+    estimated_start = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Taxminiy boshlanish vaqti"
+    )
+    estimated_end = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Taxminiy tugash vaqti"
+    )
+    estimated_duration_minutes = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Taxminiy davomiylik (daqiqa)"
+    )
+    actual_duration_minutes = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Haqiqiy davomiylik (daqiqa)"
+    )
+    priority = models.IntegerField(
+        default=5,
+        help_text="Ustuvorlik darajasi (1=baland, 10=past)"
+    )
+    queue_position = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Stanok navbatidagi o'rni"
+    )
+    
+    @property
+    def is_ready_to_start(self):
+        """Check if this step's dependencies are complete"""
+        if not self.depends_on_step:
+            return True
+        return self.depends_on_step.status == 'completed'
+    
+    @property
+    def duration_minutes(self):
+        """Calculate actual duration from time logs or timestamps"""
+        if self.actual_duration_minutes:
+            return self.actual_duration_minutes
+        
+        if self.started_at and self.completed_at:
+            duration = (self.completed_at - self.started_at).total_seconds() / 60
+            return round(duration, 2)
+        
+        return None
+    
+    def calculate_estimated_time(self):
+        """Calculate estimated time based on quantity and worker efficiency"""
+        if not self.assigned_to or not self.order:
+            return None
+        
+        from api.models import EmployeeEfficiency
+        
+        # Map step to production stage
+        step_to_stage = {
+            'cutting': 'cutting',
+            'printing': 'printing',
+            'gluing': 'gluing',
+            'drying': 'drying',
+            'packaging': 'packaging',
+        }
+        
+        stage = step_to_stage.get(self.step)
+        if not stage:
+            return None
+        
+        # Get employee efficiency
+        efficiency = EmployeeEfficiency.objects.filter(
+            employee=self.assigned_to,
+            production_stage=stage
+        ).order_by('-effective_from').first()
+        
+        if not efficiency or efficiency.units_per_hour == 0:
+            return None
+        
+        # Calculate time
+        quantity = self.order.quantity
+        time_hours = float(quantity) / float(efficiency.units_per_hour)
+        time_minutes = time_hours * 60
+        
+        # Add machine setup time if applicable
+        if self.machine:
+            time_minutes += self.machine.setup_time_minutes
+        
+        return round(time_minutes, 2)
+
+class Invoice(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='invoices')
+    invoice_number = models.CharField(max_length=50, unique=True, editable=False)
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    status = models.CharField(max_length=20, default='unpaid')
+    due_date = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            import time
+            self.invoice_number = f"INV-{int(time.time())}"
+        super().save(*args, **kwargs)
+
+class ActivityLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    action = models.CharField(max_length=255) # e.g., "Updated Order #123 status to In Production"
+    details = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class SettingsLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    setting_type = models.CharField(max_length=100) # e.g., "paper_price", "tax_percent"
+    old_value = models.TextField()
+    new_value = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class EmployeeEfficiency(models.Model):
+    """Track employee efficiency and performance by production stage"""
+    STAGE_CHOICES = (
+        ('cutting', 'Kesish'),
+        ('printing', 'Chop etish'),
+        ('gluing', 'Yelimlash'),
+        ('drying', 'Quritish'),
+        ('packaging', 'Qadoqlash'),
+        ('finishing', 'Tayyorlash'),
+    )
+    
+    employee = models.ForeignKey(User, on_delete=models.CASCADE, related_name='efficiency_records')
+    production_stage = models.CharField(max_length=50, choices=STAGE_CHOICES)
+    units_per_hour = models.DecimalField(max_digits=10, decimal_places=2, help_text="Bir soatda ishlab chiqarish qobiliyati (quti)")
+    error_rate_percent = models.IntegerField(default=0, help_text="Xatolik foizi (0-100)")
+    hourly_labor_cost = models.DecimalField(max_digits=20, decimal_places=2, help_text="Bir soatlik ish haqi (so'm)")
+    effective_from = models.DateField(help_text="Qachondan kuchga kiradi")
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-effective_from']
+        verbose_name = "Employee Efficiency"
+        verbose_name_plural = "Employee Efficiencies"
+    
+    def __str__(self):
+        return f"{self.employee.username} - {self.production_stage} ({self.units_per_hour} units/hour)"
+
+
+class MachineSettings(models.Model):
+    """Machine configuration and cost parameters"""
+    MACHINE_TYPE_CHOICES = (
+        ('printer', 'Bosma stanok'),
+        ('cutter', 'Kesish stanok'),
+        ('laminator', 'Laminatsiya'),
+        ('folder', 'Buklovchi'),
+        ('other', 'Boshqa'),
+    )
+    
+    machine_name = models.CharField(max_length=100, unique=True)
+    machine_type = models.CharField(max_length=50, choices=MACHINE_TYPE_CHOICES)
+    hourly_rate = models.DecimalField(max_digits=20, decimal_places=2, help_text="Soatlik narx (so'm)")
+    setup_time_minutes = models.IntegerField(default=30, help_text="Sozlash vaqti (daqiqada)")
+    minimum_run_time_minutes = models.IntegerField(default=15, help_text="Minimal ish vaqti (daqiqada)")
+    compatible_processes = models.JSONField(default=list, blank=True, help_text="Mos jarayonlar ro'yxati")
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['machine_name']
+        verbose_name = "Machine Settings"
+        verbose_name_plural = "Machine Settings"
+    
+    def __str__(self):
+        return f"{self.machine_name} ({self.machine_type})"
+
+
+# ========================================
+# PHASE 1: INFRASTRUCTURE MODELS
+# ========================================
+
+class SystemLock(models.Model):
+    """
+    Prevents concurrent editing of critical entities.
+    Used for optimistic locking at application level.
+    """
+    ENTITY_CHOICES = (
+        ('order', 'Order'),
+        ('pricing_settings', 'Pricing Settings'),
+        ('production_step', 'Production Step'),
+        ('material_batch', 'Material Batch'),
+    )
+    
+    entity_type = models.CharField(max_length=50, choices=ENTITY_CHOICES)
+    entity_id = models.CharField(max_length=255, help_text="UUID or ID of locked entity")
+    locked_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='locks_held')
+    locked_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(help_text="Auto-release after this time")
+    reason = models.CharField(max_length=255, default='editing', help_text="Why locked")
+    
+    class Meta:
+        unique_together = ['entity_type', 'entity_id']
+        indexes = [
+            models.Index(fields=['entity_type', 'entity_id']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.entity_type}:{self.entity_id} locked by {self.locked_by.username}"
+    
+    @classmethod
+    def acquire_lock(cls, entity_type, entity_id, user, duration_minutes=10, reason='editing'):
+        """Acquire a lock on an entity"""
+        from datetime import timedelta
+        expires_at = timezone.now() + timedelta(minutes=duration_minutes)
+        
+        # Clean expired locks first
+        cls.objects.filter(expires_at__lt=timezone.now()).delete()
+        
+        # Try to acquire lock
+        lock, created = cls.objects.get_or_create(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            defaults={
+                'locked_by': user,
+                'expires_at': expires_at,
+                'reason': reason
+            }
+        )
+        
+        if not created and lock.locked_by != user:
+            return None, f"Locked by {lock.locked_by.username} until {lock.expires_at}"
+        
+        return lock, None
+    
+    @classmethod
+    def release_lock(cls, entity_type, entity_id, user):
+        """Release a lock"""
+        cls.objects.filter(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            locked_by=user
+        ).delete()
+
+
+class Calendar(models.Model):
+    """
+    Working days calendar for accurate deadline calculation.
+    Supports holidays, weekends, and custom non-working days.
+    """
+    date = models.DateField(unique=True, db_index=True)
+    is_working_day = models.BooleanField(default=True)
+    shift_count = models.IntegerField(default=1, help_text="Number of shifts on this day")
+    notes = models.TextField(blank=True, null=True, help_text="Holiday name or reason")
+    
+    class Meta:
+        ordering = ['date']
+    
+    def __str__(self):
+        status = "Working" if self.is_working_day else "Holiday"
+        return f"{self.date} - {status}"
+    
+    @classmethod
+    def get_working_days_count(cls, start_date, end_date):
+        """Calculate number of working days between two dates"""
+        return cls.objects.filter(
+            date__gte=start_date,
+            date__lte=end_date,
+            is_working_day=True
+        ).count()
+    
+    @classmethod
+    def add_working_days(cls, start_date, days_to_add):
+        """Add working days to a date"""
+        from datetime import timedelta
+        current_date = start_date
+        days_added = 0
+        
+        while days_added < days_to_add:
+            current_date += timedelta(days=1)
+            # Check if working day
+            calendar_day = cls.objects.filter(date=current_date).first()
+            if calendar_day and calendar_day.is_working_day:
+                days_added += 1
+            elif not calendar_day:
+                # If not in calendar, assume working day (except weekends)
+                if current_date.weekday() < 5:  # Monday-Friday
+                    days_added += 1
+        
+        return current_date
+
+
+class Shift(models.Model):
+    """
+    Production shift configuration for capacity planning.
+    """
+    name = models.CharField(max_length=100, help_text="e.g., Morning, Evening, Night")
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    capacity_multiplier = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=1.0,
+        help_text="Production capacity multiplier (1.0 = normal, 1.5 = 150% capacity)"
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['start_time']
+    
+    def __str__(self):
+        return f"{self.name} ({self.start_time}-{self.end_time})"
+    
+    @property
+    def duration_hours(self):
+        """Calculate shift duration in hours"""
+        from datetime import datetime, timedelta
+        start = datetime.combine(datetime.today(), self.start_time)
+        end = datetime.combine(datetime.today(), self.end_time)
+        
+        if end < start:  # Overnight shift
+            end += timedelta(days=1)
+        
+        duration = (end - start).total_seconds() / 3600
+        return duration
+
+
+class Reservation(models.Model):
+    """
+    Material reservation for orders to prevent FIFO conflicts.
+    When order is approved, materials are reserved from specific batches.
+    """
+    material = models.ForeignKey('Material', on_delete=models.CASCADE, related_name='reservations')
+    material_batch = models.ForeignKey('MaterialBatch', on_delete=models.CASCADE, related_name='reservations')
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='material_reservations')
+    reserved_qty = models.DecimalField(max_digits=20, decimal_places=2)
+    reserved_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(help_text="Reservation expires if order not started")
+    consumed = models.BooleanField(default=False, help_text="True when actually used in production")
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['reserved_at']
+        indexes = [
+            models.Index(fields=['material', 'consumed']),
+            models.Index(fields=['order', 'consumed']),
+        ]
+    
+    def __str__(self):
+        return f"{self.material.name} - {self.reserved_qty} reserved for Order #{self.order.order_number}"
+    
+    @classmethod
+    def reserve_materials(cls, order, material_usage_dict):
+        """
+        Reserve materials for an order using FIFO.
+        material_usage_dict: {material_id: quantity_needed}
+        """
+        from .models import MaterialBatch
+        from datetime import timedelta
+        
+        reservations = []
+        expires_at = timezone.now() + timedelta(days=7)  # 7 days to start production
+        
+        for material_id, qty_needed in material_usage_dict.items():
+            remaining = qty_needed
+            
+            # Get FIFO batches
+            batches = MaterialBatch.objects.filter(
+                material_id=material_id,
+                is_active=True,
+                current_quantity__gt=0
+            ).order_by('received_date')
+            
+            for batch in batches:
+                if remaining <= 0:
+                    break
+                
+                # Calculate available (not reserved) quantity
+                reserved_qty = cls.objects.filter(
+                    material_batch=batch,
+                    consumed=False
+                ).aggregate(total=models.Sum('reserved_qty'))['total'] or 0
+                
+                available = batch.current_quantity - reserved_qty
+                
+                if available > 0:
+                    to_reserve = min(available, remaining)
+                    
+                    reservation = cls.objects.create(
+                        material=batch.material,
+                        material_batch=batch,
+                        order=order,
+                        reserved_qty=to_reserve,
+                        expires_at=expires_at
+                    )
+                    reservations.append(reservation)
+                    remaining -= to_reserve
+            
+            if remaining > 0:
+                raise ValueError(f"Insufficient stock for {material_id}: need {remaining} more")
+        
+        return reservations
+    
+    def consume(self):
+        """Mark reservation as consumed and deduct from batch"""
+        if not self.consumed:
+            self.material_batch.current_quantity -= self.reserved_qty
+            self.material_batch.save()
+            
+            self.consumed = True
+            self.consumed_at = timezone.now()
+            self.save()
+
+
+# ========================================
+# PHASE 2: ADVANCED BUSINESS MODELS
+# ========================================
+
+class ReworkLog(models.Model):
+    """
+    Quality control rework tracking.
+    Tracks issues found during QC and their resolution.
+    """
+    REASON_CHOICES = (
+        ('print_defect', 'Chop etish nuqsoni'),
+        ('cutting_error', 'Kesishda xatolik'),
+        ('gluing_issue', 'Yelimlash muammosi'),
+        ('material_defect', 'Material nuqsoni'),
+        ('design_error', 'Dizayn xatosi'),
+        ('other', 'Boshqa'),
+    )
+    
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='rework_logs')
+    production_step = models.ForeignKey('ProductionStep', on_delete=models.SET_NULL, null=True, blank=True)
+    reason = models.CharField(max_length=50, choices=REASON_CHOICES)
+    description = models.TextField(help_text="Muammoning batafsil tavsifi")
+    responsible = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='rework_responsible')
+    detected_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='rework_detector')
+    
+    # Rework costs
+    extra_material_cost = models.DecimalField(max_digits=20, decimal_places=2, default=0, help_text="Qo'shimcha material xarajati")
+    extra_labor_cost = models.DecimalField(max_digits=20, decimal_places=2, default=0, help_text="Qo'shimcha ish haqi")
+    extra_time_hours = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Qo'shimcha vaqt (soat)")
+    
+    # Status
+    is_resolved = models.BooleanField(default=False)
+    resolution_notes = models.TextField(blank=True, null=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='rework_resolver')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Rework: Order #{self.order.order_number} - {self.get_reason_display()}"
+    
+    @property
+    def total_extra_cost(self):
+        """Total rework cost"""
+        return self.extra_material_cost + self.extra_labor_cost
+
+
+class ChartOfAccounts(models.Model):
+    """
+    Chart of Accounts for double-entry accounting.
+    Hierarchical account structure.
+    """
+    ACCOUNT_TYPE_CHOICES = (
+        ('asset', 'Asset (Aktiv)'),
+        ('liability', 'Liability (Passiv)'),
+        ('equity', 'Equity (Kapital)'),
+        ('revenue', 'Revenue (Daromad)'),
+        ('expense', 'Expense (Xarajat)'),
+    )
+    
+    code = models.CharField(max_length=20, unique=True, help_text="e.g., 1000, 2000, 3000")
+    name = models.CharField(max_length=255, help_text="e.g., Cash, Accounts Receivable")
+    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
+    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['code']
+        verbose_name = "Chart of Accounts"
+        verbose_name_plural = "Chart of Accounts"
+    
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+    
+    @property
+    def balance(self):
+        """
+        Calculate account balance from journal entries.
+        Debit increases: Assets, Expenses
+        Credit increases: Liabilities, Equity, Revenue
+        """
+        from django.db.models import Sum
+        
+        debits = JournalEntryLine.objects.filter(account=self).aggregate(
+            total=Sum('debit')
+        )['total'] or 0
+        
+        credits = JournalEntryLine.objects.filter(account=self).aggregate(
+            total=Sum('credit')
+        )['total'] or 0
+        
+        if self.account_type in ['asset', 'expense']:
+            return debits - credits
+        else:  # liability, equity, revenue
+            return credits - debits
+
+
+class JournalEntry(models.Model):
+    """
+    Journal entries for double-entry bookkeeping.
+    Every transaction has equal debits and credits.
+    """
+    ENTRY_TYPE_CHOICES = (
+        ('payment', 'To\'lov'),
+        ('purchase', 'Xarid'),
+        ('sale', 'Sotuv'),
+        ('adjustment', 'Tuzatish'),
+        ('other', 'Boshqa'),
+    )
+    
+    date = models.DateField(db_index=True)
+    entry_type = models.CharField(max_length=20, choices=ENTRY_TYPE_CHOICES)
+    description = models.TextField()
+    reference = models.CharField(max_length=255, blank=True, null=True, help_text="e.g., Order #, Invoice #")
+    
+    # Link to source
+    order = models.ForeignKey('Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='journal_entries')
+    transaction = models.ForeignKey('Transaction', on_delete=models.SET_NULL, null=True, blank=True, related_name='journal_entries')
+    
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date', '-created_at']
+        verbose_name = "Journal Entry"
+        verbose_name_plural = "Journal Entries"
+    
+    def __str__(self):
+        return f"JE-{self.id}: {self.entry_type} on {self.date}"
+    
+    def is_balanced(self):
+        """Check if debits equal credits"""
+        from django.db.models import Sum
+        
+        totals = self.lines.aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        
+        debit = totals['total_debit'] or 0
+        credit = totals['total_credit'] or 0
+        
+        return abs(debit - credit) < 0.01  # Account for rounding
+
+
+class JournalEntryLine(models.Model):
+    """
+    Individual line items in a journal entry.
+    Each line is either debit or credit (not both).
+    """
+    entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name='lines')
+    account = models.ForeignKey(ChartOfAccounts, on_delete=models.PROTECT, related_name='journal_lines')
+    debit = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    credit = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    notes = models.CharField(max_length=500, blank=True, null=True)
+    
+    class Meta:
+        ordering = ['id']
+    
+    def __str__(self):
+        amount = self.debit if self.debit > 0 else self.credit
+        dr_cr = "DR" if self.debit > 0 else "CR"
+        return f"{self.account.code}: {dr_cr} {amount:,.2f}"
+    
+    def clean(self):
+        """Validate that only debit or credit is set, not both"""
+        from django.core.exceptions import ValidationError
+        
+        if self.debit > 0 and self.credit > 0:
+            raise ValidationError("Line cannot have both debit and credit")
+        
+        if self.debit == 0 and self.credit == 0:
+            raise ValidationError("Line must have either debit or credit")
+
+
+class PriceVersion(models.Model):
+    """
+    Price calculation version tracking.
+    Stores snapshots of pricing formulas and settings.
+    """
+    version_number = models.IntegerField()
+    effective_date = models.DateField()
+    pricing_settings_snapshot = models.JSONField(help_text="Full PricingSettings dump")
+    formula_description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-version_number']
+        unique_together = ['version_number']
+    
+    def __str__(self):
+        return f"Price Version {self.version_number} ({self.effective_date})"
+    
+    @classmethod
+    def create_snapshot(cls, user):
+        """Create a new price version snapshot"""
+        from .models import PricingSettings
+        import json
+        from django.core.serializers.json import DjangoJSONEncoder
+        
+        settings = PricingSettings.load()
+        
+        # Get next version number
+        last_version = cls.objects.first()
+        next_version = (last_version.version_number + 1) if last_version else 1
+        
+        # Create snapshot
+        snapshot = {
+            'paper_price_per_kg': float(settings.paper_price_per_kg),
+            'ink_price_per_kg': float(settings.ink_price_per_kg),
+            'lacquer_price_per_kg': float(settings.lacquer_price_per_kg),
+            'plate_cost': float(settings.plate_cost),
+            'setup_cost': float(settings.setup_cost),
+            'profit_margin_percent': settings.profit_margin_percent,
+            'tax_percent': settings.tax_percent,
+            # ... all relevant fields
+        }
+        
+        return cls.objects.create(
+            version_number=next_version,
+            effective_date=timezone.now().date(),
+            pricing_settings_snapshot=snapshot,
+            created_by=user
+        )
+
+
+class MachineDowntime(models.Model):
+    """
+    Track machine downtime for capacity planning.
+    Records when machines are unavailable and why.
+    """
+    REASON_CHOICES = (
+        ('maintenance', 'Texnik xizmat'),
+        ('breakdown', 'Buzilish'),
+        ('repair', 'Ta\'mirlash'),
+        ('cleaning', 'Tozalash'),
+        ('calibration', 'Sozlash'),
+        ('other', 'Boshqa'),
+    )
+    
+    machine = models.ForeignKey('MachineSettings', on_delete=models.CASCADE, related_name='downtimes')
+    reason = models.CharField(max_length=50, choices=REASON_CHOICES)
+    description = models.TextField(blank=True, null=True, help_text="Muammoning tavsifi")
+    
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    estimated_duration_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    
+    reported_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='reported_downtimes')
+    resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_downtimes')
+    
+    is_active = models.BooleanField(default=True, help_text="True if downtime is ongoing")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-started_at']
+    
+    def __str__(self):
+        status = "Active" if self.is_active else "Resolved"
+        return f"{self.machine.machine_name} - {self.get_reason_display()} ({status})"
+    
+    @property
+    def duration_hours(self):
+        """Calculate actual downtime duration"""
+        if self.ended_at:
+            duration = (self.ended_at - self.started_at).total_seconds() / 3600
+            return round(duration, 2)
+        else:
+            # Ongoing - calculate current duration
+            duration = (timezone.now() - self.started_at).total_seconds() / 3600
+            return round(duration, 2)
+    
+    
+    def resolve(self, user):
+        """Mark downtime as resolved"""
+        self.is_active = False
+        self.ended_at = timezone.now()
+        self.resolved_by = user
+        self.save()
+
+
+# ========================================
+# PHASE 7: PRODUCT TEMPLATE SYSTEM (PrintERP TZ Section 3)
+# ========================================
+
+class ProductTemplate(BaseModel):
+    """
+    Template for product types with layer configuration.
+    Defines standard product types like medicine boxes, pizza boxes, etc.
+    """
+    CATEGORY_CHOICES = (
+        ('medicine_box_1layer', 'Dori qutilari (1 qatlam)'),
+        ('pizza_box', 'Pizza qutilari'),
+        ('box_2layer', '2 qatlamli karobka'),
+        ('box_3layer', '3 qatlamli karobka'),
+        ('cookie_box', 'Pecheniye karobkalari'),
+        ('gift_bag', 'Sovg\'a sumkalari'),
+        ('food_box', 'Oziqa karobkalari'),
+        ('custom', 'Maxsus'),
+    )
+    
+    name = models.CharField(max_length=255, help_text="Template nomi, masalan: 'Dori qutisi standart'")
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    layer_count = models.IntegerField(default=1, help_text="Qatlamlar soni (1-3)")
+    default_waste_percent = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=5.0,
+        help_text="Standart chiqindi foizi"
+    )
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    
+    # Default dimensions (optional)
+    default_width = models.FloatField(null=True, blank=True, help_text="Standart kenglik (cm)")
+    default_height = models.FloatField(null=True, blank=True, help_text="Standart balandlik (cm)")
+    default_depth = models.FloatField(null=True, blank=True, help_text="Standart chuqurlik (cm)")
+    
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = "Product Template"
+        verbose_name_plural = "Product Templates"
+    
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+
+
+class ProductTemplateLayer(BaseModel):
+    """
+    Layer configuration for product template.
+    Each layer specifies material requirements and constraints.
+    """
+    template = models.ForeignKey(ProductTemplate, on_delete=models.CASCADE, related_name='layers')
+    layer_number = models.IntegerField(help_text="Qatlam raqami (1, 2, 3)")
+    
+    # Material constraints
+    material_category = models.CharField(
+        max_length=100, 
+        help_text="Material kategoriyasi: qogoz, karton, kraft, etc."
+    )
+    min_density = models.IntegerField(
+        null=True, 
+        blank=True, 
+        help_text="Minimal zichlik (gsm), masalan: 250"
+    )
+    max_density = models.IntegerField(
+        null=True, 
+        blank=True, 
+        help_text="Maksimal zichlik (gsm), masalan: 400"
+    )
+    
+    # Compatible materials (many-to-many)
+    compatible_materials = models.ManyToManyField(
+        Material, 
+        blank=True,
+        related_name='template_layers',
+        help_text="Ushbu qatlam uchun mos materiallar"
+    )
+    
+    # Layer-specific waste
+    waste_percent_override = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Agar bo'lsa, template default waste ni override qiladi"
+    )
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['template', 'layer_number']
+        unique_together = ['template', 'layer_number']
+    
+    def __str__(self):
+        return f"{self.template.name} - Qatlam {self.layer_number}"
+    
+    @property
+    def effective_waste_percent(self):
+        """Get effective waste percentage (override or template default)"""
+        return self.waste_percent_override or self.template.default_waste_percent
+
+
+class ProductTemplateRouting(BaseModel):
+    """
+    Production routing/workflow for template.
+    Defines the sequence of production steps required.
+    """
+    STEP_CHOICES = (
+        ('design', 'Dizayn'),
+        ('prepress', 'Pre-press'),
+        ('cutting', 'Kesish'),
+        ('printing', 'Chop etish'),
+        ('lamination', 'Laminatsiya'),
+        ('lacquering', 'Laklash'),
+        ('die_cutting', 'Die-cutting'),
+        ('gluing', 'Yelimlash'),
+        ('folding', 'Buklash'),
+        ('drying', 'Quritish'),
+        ('packaging', 'Qadoqlash'),
+        ('qc', 'Sifat nazorati'),
+    )
+    
+    template = models.ForeignKey(ProductTemplate, on_delete=models.CASCADE, related_name='routing_steps')
+    sequence = models.IntegerField(help_text="Bosqich tartibi (1, 2, 3...)")
+    step_name = models.CharField(max_length=50, choices=STEP_CHOICES)
+    
+    # Machine requirements
+    required_machine_type = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Kerakli stanok turi"
+    )
+    
+    # Time estimation
+    estimated_time_per_unit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Bir dona uchun taxminiy vaqt (daqiqa)"
+    )
+    setup_time_minutes = models.IntegerField(
+        default=0,
+        help_text="Sozlash vaqti (daqiqa)"
+    )
+    
+    # QC checkpoint
+    qc_checkpoint = models.BooleanField(
+        default=False,
+        help_text="Ushbu bosqichdan keyin QC nazorati kerakmi?"
+    )
+    qc_checkpoint_criteria = models.TextField(
+        blank=True,
+        null=True,
+        help_text="QC nazorati mezonlari"
+    )
+    
+    # Optional step
+    is_optional = models.BooleanField(
+        default=False,
+        help_text="Ixtiyoriy bosqichmi? (masalan: laklash)"
+    )
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['template', 'sequence']
+        unique_together = ['template', 'sequence']
+    
+    def __str__(self):
+        return f"{self.template.name} - {self.sequence}. {self.get_step_name_display()}"
+
+
+class MaterialNormative(BaseModel):
+    """
+    Normative consumption rates per product type.
+    Defines how much material is needed per unit for different scenarios.
+    """
+    MATERIAL_TYPE_CHOICES = (
+        ('paper', 'Qogoz'),
+        ('ink', 'Siyoh'),
+        ('lacquer', 'Lak'),
+        ('adhesive', 'Yelim'),
+        ('other', 'Boshqa'),
+    )
+    
+    product_template = models.ForeignKey(
+        ProductTemplate, 
+        on_delete=models.CASCADE, 
+        related_name='normatives'
+    )
+    material_type = models.CharField(max_length=20, choices=MATERIAL_TYPE_CHOICES)
+    
+    # For ink: consumption varies by color count
+    color_count = models.IntegerField(
+        null=True, 
+        blank=True,
+        help_text="Ranglar soni (faqat siyoh uchun): 1, 2, 4, 6"
+    )
+    
+    # Consumption rate
+    consumption_per_unit = models.DecimalField(
+        max_digits=20,
+        decimal_places=4,
+        help_text="Bir dona uchun sarflanish (g, ml, m²)"
+    )
+    unit_of_measure = models.CharField(
+        max_length=20,
+        default='g',
+        help_text="O'lchov birligi: g, ml, m², kg, L"
+    )
+    
+    # Waste
+    waste_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=5.0,
+        help_text="Chiqindi foizi"
+    )
+    
+    # Validity
+    effective_from = models.DateField(
+        default=timezone.now,
+        help_text="Qachondan kuchga kiradi"
+    )
+    effective_to = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Qachongacha amal qiladi"
+    )
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['product_template', 'material_type', 'color_count']
+    
+    def __str__(self):
+        color_info = f" ({self.color_count} rang)" if self.color_count else ""
+        return f"{self.product_template.name} - {self.get_material_type_display()}{color_info}: {self.consumption_per_unit} {self.unit_of_measure}"
+    
+    @property
+    def consumption_with_waste(self):
+        """Calculate consumption including waste"""
+        return self.consumption_per_unit * (1 + self.waste_percent / 100)
+
+
+# ========================================
+# PHASE 8: WORKER TIME TRACKING (PrintERP TZ Section 8.2)
+# ========================================
+
+class WorkerTimeLog(BaseModel):
+    """
+    Detailed time tracking for workers.
+    Tracks START, PAUSE, RESUME, FINISH actions for accurate labor cost calculation.
+    """
+    ACTION_CHOICES = (
+        ('start', 'START'),
+        ('pause', 'PAUSE'),
+        ('resume', 'RESUME'),
+        ('finish', 'FINISH'),
+    )
+    
+    PAUSE_REASON_CHOICES = (
+        ('break', 'Tanaffus'),
+        ('material_wait', 'Material kutish'),
+        ('machine_issue', 'Stanok muammosi'),
+        ('meeting', 'Yig\'ilish'),
+        ('other', 'Boshqa'),
+    )
+    
+    production_step = models.ForeignKey(
+        'ProductionStep',
+        on_delete=models.CASCADE,
+        related_name='time_logs'
+    )
+    worker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='time_logs'
+    )
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    # Pause details
+    pause_reason = models.CharField(
+        max_length=50,
+        choices=PAUSE_REASON_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Pauza sababi (faqat PAUSE action uchun)"
+    )
+    notes = models.TextField(blank=True, null=True)
+    
+    # Location tracking (optional)
+    location = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Ish joyi (masalan: Stanok #3)"
+    )
+    
+    class Meta:
+        ordering = ['production_step', 'timestamp']
+        indexes = [
+            models.Index(fields=['production_step', 'timestamp']),
+            models.Index(fields=['worker', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.worker.username} - {self.get_action_display()} at {self.timestamp.strftime('%H:%M:%S')}"
+
+
+# ========================================
+# PHASE 9: QC CHECKPOINT SYSTEM (PrintERP TZ Section 9)
+# ========================================
+
+class QCCheckpoint(BaseModel):
+    """
+    Quality Control Checkpoint for production steps.
+    Implements Pass/Fail workflow with automatic rework triggering.
+    """
+    CHECKPOINT_TYPE_CHOICES = (
+        ('visual', 'Vizual tekshiruv'),
+        ('measurement', "O'lcham tekshiruvi"),
+        ('functional', 'Funktsional test'),
+        ('material', 'Material sifati'),
+        ('finish', 'Yakuniy tekshiruv'),
+    )
+    
+    STATUS_CHOICES = (
+        ('pending', 'Kutilmoqda'),
+        ('pass', "O'tdi"),
+        ('fail', "O'tmadi"),
+        ('na', 'N/A'),
+    )
+    
+    DEFECT_TYPE_CHOICES = (
+        ('dimension', "O'lcham xato"),
+        ('color', 'Rang xato'),
+        ('damage', 'Shikastlangan'),
+        ('alignment', 'Noto\'g\'ri joylashish'),
+        ('quality', 'Sifat past'),
+        ('other', 'Boshqa'),
+    )
+    
+    SEVERITY_CHOICES = (
+        ('critical', 'Kritik'),
+        ('major', 'Katta'),
+        ('minor', 'Kichik'),
+    )
+    
+    # Checkpoint definition
+    production_step = models.ForeignKey(
+        'ProductionStep',
+        on_delete=models.CASCADE,
+        related_name='qc_checkpoints'
+    )
+    checkpoint_name = models.CharField(max_length=255)
+    checkpoint_type = models.CharField(
+        max_length=20,
+        choices=CHECKPOINT_TYPE_CHOICES,
+        default='visual'
+    )
+    is_mandatory = models.BooleanField(
+        default=True,
+        help_text="Bu checkpoint majburiyma?"
+    )
+    pass_criteria = models.TextField(
+        help_text="O'tish mezonlari"
+    )
+    
+    # Inspection results
+    inspector = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='qc_inspections',
+        limit_choices_to={'role': 'qc'}
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True
+    )
+    inspected_at = models.DateTimeField(null=True, blank=True)
+    
+    # Failure details
+    failure_reason = models.TextField(
+        null=True,
+        blank=True,
+        help_text="O'tmaganlik sababi"
+    )
+    defect_type = models.CharField(
+        max_length=20,
+        choices=DEFECT_TYPE_CHOICES,
+        null=True,
+        blank=True
+    )
+    defect_severity = models.CharField(
+        max_length=10,
+        choices=SEVERITY_CHOICES,
+        null=True,
+        blank=True
+    )
+    defect_count = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Nuqsonlar soni"
+    )
+    
+    # Photos/evidence
+    defect_photos = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Rasm URL'lari (list)"
+    )
+    
+    # Rework handling
+    rework_triggered = models.BooleanField(default=False)
+    rework_order = models.ForeignKey(
+        'Order',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='rework_from_qc'
+    )
+    
+    # Additional notes
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['production_step', 'created_at']
+        indexes = [
+            models.Index(fields=['production_step', 'status']),
+            models.Index(fields=['inspector', 'inspected_at']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.checkpoint_name} - {self.production_step.order.order_number} ({self.get_status_display()})"
+    
+    def pass_inspection(self, inspector, notes=None):
+        """Mark checkpoint as passed"""
+        self.status = 'pass'
+        self.inspector = inspector
+        self.inspected_at = timezone.now()
+        if notes:
+            self.notes = notes
+        self.save()
+    
+    def fail_inspection(self, inspector, failure_reason, defect_type, severity, notes=None, defect_count=1):
+        """Mark checkpoint as failed and optionally trigger rework"""
+        self.status = 'fail'
+        self.inspector = inspector
+        self.inspected_at = timezone.now()
+        self.failure_reason = failure_reason
+        self.defect_type = defect_type
+        self.defect_severity = severity
+        self.defect_count = defect_count
+        if notes:
+            self.notes = notes
+        self.save()
+        
+        # Auto-trigger rework for critical defects
+        if severity == 'critical' and not self.rework_triggered:
+            self.trigger_rework()
+    
+    def trigger_rework(self):
+        """Create rework order and link it"""
+        if not self.rework_triggered:
+            # Create rework order (simplified - in reality would duplicate order)
+            from .models import ReworkLog
+            ReworkLog.objects.create(
+                order=self.production_step.order,
+                reason=self.defect_type or 'other',
+                description=f"QC Checkpoint failed: {self.failure_reason}",
+                step_name=self.production_step.step,
+                severity=self.defect_severity or 'major'
+            )
+            self.rework_triggered = True
+            self.save()
+
