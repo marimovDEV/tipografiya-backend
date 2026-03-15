@@ -50,6 +50,10 @@ from .scheduling_views import (
     calculate_step_times, schedule_order_production, get_production_analytics,
     update_step_priority, get_machine_availability
 )
+from .export_views import (
+    export_daily_production, export_worker_efficiency,
+    export_warehouse_status, export_qc_statistics
+)
 from .auth_views import login, logout, me
 
 router = DefaultRouter()
@@ -167,6 +171,12 @@ urlpatterns = [
     path('production/analytics/', get_production_analytics, name='production-analytics'),
     path('production/<uuid:step_id>/priority/', update_step_priority, name='update-priority'),
     path('machines/availability/', get_machine_availability, name='machine-availability'),
+    
+    # Excel Exports
+    path('exports/daily-production/', export_daily_production, name='export-daily-production'),
+    path('exports/worker-efficiency/', export_worker_efficiency, name='export-worker-efficiency'),
+    path('exports/warehouse-status/', export_warehouse_status, name='export-warehouse-status'),
+    path('exports/qc-statistics/', export_qc_statistics, name='export-qc-statistics'),
     
     # Authentication
     path('auth/login/', login, name='login'),
