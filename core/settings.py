@@ -44,8 +44,19 @@ MIDDLEWARE = [
 
 APPEND_SLASH = True
 
-CORS_ALLOW_ALL_ORIGINS = True # For MVP. In prod, set CORS_ALLOWED_ORIGINS
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000,https://*.onrender.com').split(',')
+# CORS Settings
+CORS_ALLOW_ALL_ORIGINS = DEBUG # Allow all only in DEBUG mode
+if not DEBUG:
+    CORS_ALLOWED_ORIGINS = [
+        "https://tipografiya-nashr.vercel.app",
+        "http://localhost:3000",
+    ]
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS', 
+    'http://localhost:3000,https://tipografiya-nashr.vercel.app'
+).split(',')
 
 ROOT_URLCONF = 'core.urls'
 
@@ -101,6 +112,9 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / "media"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
