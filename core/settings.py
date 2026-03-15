@@ -14,7 +14,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '84.54.28.96,tapi.pizzacentergarden.uz,tipografiya-nashr.vercel.app').split(',')
 
 # Application definition
 
@@ -53,12 +53,13 @@ if not DEBUG:
     CORS_ALLOWED_ORIGINS = [
         "https://tipografiya-nashr.vercel.app",
         "http://localhost:3000",
+        "https://tapi.pizzacentergarden.uz",
     ]
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS', 
-    'http://localhost:3000,https://tipografiya-nashr.vercel.app'
+    'http://localhost:3000,https://tipografiya-nashr.vercel.app,https://tapi.pizzacentergarden.uz'
 ).split(',')
 
 ROOT_URLCONF = 'core.urls'
