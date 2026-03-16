@@ -367,18 +367,18 @@ class ProductionScheduler:
         """
         Get overall production analytics.
         """
-        total_pending = ProductionStep.objects.filter(status='pending').count()
-        total_in_progress = ProductionStep.objects.filter(status='in_progress').count()
+        total_pending = ProductionStep.objects.filter(status='pending').values('order').distinct().count()
+        total_in_progress = ProductionStep.objects.filter(status='in_progress').values('order').distinct().count()
         total_completed_today = ProductionStep.objects.filter(
             status='completed',
             completed_at__date=timezone.now().date()
-        ).count()
+        ).values('order').distinct().count()
         
         # Late steps (estimated_end in past but not completed)
         late_steps = ProductionStep.objects.filter(
             status__in=['pending', 'in_progress'],
             estimated_end__lt=timezone.now()
-        ).count()
+        ).values('order').distinct().count()
         
         # Average completion time
         completed_steps = ProductionStep.objects.filter(
