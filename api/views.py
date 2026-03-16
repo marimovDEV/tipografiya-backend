@@ -183,6 +183,17 @@ class UserViewSet(viewsets.ModelViewSet):
             attendance.status = 'finished'
             attendance.calculate_duration()
             attendance.save()
+
+        # Auto-complete any active production tasks
+        active_steps = ProductionStep.objects.filter(assigned_to=user, status='in_progress')
+        for step in active_steps:
+            step.status = 'completed'
+            step.completed_at = timezone.now()
+            step.save()
+            ActivityLog.objects.create(
+                user=user,
+                action=f"Auto-completed active task on shift end: {step.get_step_display()} for Order #{step.order.order_number}"
+            )
             
         user.status = 'away'
         user.save()
@@ -2005,6 +2016,18 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             attendance.clock_out = timezone.now()
             attendance.status = 'finished'
             attendance.calculate_duration()
+            attendance.save()
+
+            # Auto-complete any active production tasks
+            active_steps = ProductionStep.objects.filter(assigned_to=request.user, status='in_progress')
+            for step in active_steps:
+                step.status = 'completed'
+                step.completed_at = timezone.now()
+                step.save()
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action=f"Auto-completed active task on clock out: {step.get_step_display()} for Order #{step.order.order_number}"
+                )
             
             # Also update user status
             request.user.status = 'away'
