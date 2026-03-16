@@ -117,7 +117,7 @@ class UserViewSet(viewsets.ModelViewSet):
             "rating": float(user.quality_rating),
             "avg_speed": avg_speed,
             "rank": User.objects.filter(role='worker').annotate(
-                today_produced=Sum('production_logs__produced_qty', filter=Q(production_logs__created_at__gte=today_start))
+                today_produced=Sum('quantity_logs__produced_qty', filter=Q(quantity_logs__created_at__gte=today_start))
             ).filter(today_produced__gt=today_stats['produced']).count() + 1
         })
 
