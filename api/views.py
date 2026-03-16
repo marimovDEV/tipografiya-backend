@@ -218,9 +218,18 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        user = authenticate(username=username, password=password)
+        username = request.data.get('username', '').strip()
+        password = request.data.get('password', '')
+        
+        # Case-insensitive username lookup
+        try:
+            user_obj = User.objects.get(username__iexact=username)
+            # Use the actual username stored in DB for standard authentication
+            user = authenticate(username=user_obj.username, password=password)
+        except (User.DoesNotExist, User.MultipleObjectsReturned):
+            # Fallback to standard authentication if lookup fails or ambiguity
+            user = authenticate(username=username, password=password)
+            
         if user:
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
