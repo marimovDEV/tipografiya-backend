@@ -890,9 +890,14 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         notes = request.data.get('notes', '')
         
         try:
+            # Safety cast
+            try:
+                new_produced = int(produced_qty)
+                new_defect = int(defect_qty)
+            except (ValueError, TypeError):
+                return Response({"error": "Soni noto'g'ri formatda kiritildi"}, status=400)
+
             step = ProductionStep.objects.get(id=step_id)
-            new_produced = int(produced_qty)
-            new_defect = int(defect_qty)
 
             # Cumulative logic
             step.produced_qty += new_produced
@@ -916,8 +921,6 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                     return Response({
                         "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
-                    "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
-                }, status=400)
 
             step.save()
             
@@ -942,7 +945,9 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 "total_defect": step.defect_qty
             })
         except ProductionStep.DoesNotExist:
-            return Response({"error": "Step not found"}, status=404)
+            return Response({"error": "Vazifa topilmadi"}, status=404)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete_step(self, request, pk=None):
@@ -974,38 +979,56 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Returns pending counts and total available quantities per step"""
-        user = request.user
-        
-        # If worker, show stats for tasks they can actually claim
-        if user.role == 'worker':
-            qs = ProductionStep.objects.filter(
-                Q(status='pending'),
-                Q(assigned_to=user) | Q(assigned_to__isnull=True)
-            )
-            if hasattr(user, 'assigned_stages') and user.assigned_stages:
-                qs = qs.filter(step__in=user.assigned_stages)
-            pending_steps = qs
-        else:
-            # If admin, show all unassigned pending tasks
-            pending_steps = ProductionStep.objects.filter(status='pending', assigned_to__isnull=True)
-        
-        # Aggregate by step type
-        stats_data = {}
-        for step_code, step_display in ProductionStep.STEP_CHOICES:
-            # We filter ready steps for this type
-            ready_steps = [s for s in pending_steps.filter(step=step_code) if s.is_ready_to_start]
+        try:
+            user = request.user
             
-            if ready_steps:
-                count = len(ready_steps)
-                total_available = sum(s.available_qty for s in ready_steps)
+            # If worker, show stats for tasks they can actually claim
+            if user.role == 'worker':
+                qs = ProductionStep.objects.filter(
+                    status='pending'
+                ).filter(
+                    Q(assigned_to=user) | Q(assigned_to__isnull=True)
+                )
+                if hasattr(user, 'assigned_stages') and user.assigned_stages:
+                    # worker might have stages stored as names or codes
+                    qs = qs.filter(step__in=user.assigned_stages)
+                pending_steps = qs
+            else:
+                # If admin, show all unassigned pending tasks
+                pending_steps = ProductionStep.objects.filter(status='pending', assigned_to__isnull=True)
+            
+            # Aggregate by step type
+            stats_data = {}
+            # Ensure we have STEP_CHOICES or fallback
+            step_choices = getattr(ProductionStep, 'STEP_CHOICES', [])
+            
+            for step_code, step_display in step_choices:
+                # We filter by both code and display name just in case
+                # since the database might use either depending on how it was created
+                type_qs = pending_steps.filter(Q(step=step_code) | Q(step=step_display))
                 
-                stats_data[step_code] = {
-                    "display": step_display,
-                    "count": count,
-                    "total_available": total_available
-                }
-        
-        return Response(stats_data)
+                # Use list comprehension to filter by property
+                ready_steps = [s for s in type_qs if s.is_ready_to_start]
+                
+                if ready_steps:
+                    count = len(ready_steps)
+                    try:
+                        total_available = sum(s.available_qty for s in ready_steps)
+                    except Exception:
+                        total_available = 0
+                        
+                    stats_data[step_code] = {
+                        "display": step_display,
+                        "count": count,
+                        "total_available": total_available
+                    }
+            
+            return Response(stats_data)
+        except Exception as e:
+            import traceback
+            print(f"Stats Error: {e}")
+            print(traceback.format_exc())
+            return Response({"error": str(e)}, status=500)
 
     @action(detail=True, methods=['post'])
     def assign_worker(self, request, pk=None):
