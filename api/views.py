@@ -556,11 +556,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         stats_data = queryset.aggregate(
             total_orders=Count('id'),
             total_revenue=Sum('total_price'),
-            total_cost=Sum('total_cost'),
         )
         
         rev = float(stats_data['total_revenue'] or 0)
-        cost = float(stats_data['total_cost'] or 0)
+        cost = 0 # Fallback until total_cost is implemented
         
         return Response({
             "total_orders": stats_data['total_orders'],

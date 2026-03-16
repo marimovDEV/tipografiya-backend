@@ -212,8 +212,10 @@ class ProductionStepSerializer(serializers.ModelSerializer):
     def get_progress_percent(self, obj):
         if obj.status == 'completed':
             return 100
-        if obj.input_qty > 0:
-            return round((obj.produced_qty / obj.input_qty) * 100)
+        produced = obj.produced_qty or 0
+        input_q = obj.input_qty or 0
+        if input_q > 0:
+            return round((produced / input_q) * 100)
         return 0
 
     def get_all_steps(self, obj):
@@ -259,13 +261,16 @@ class OrderSerializer(serializers.ModelSerializer):
         if not steps:
             return 0
         
-        # We calculate the weighted progress or just average step completion
-        # Let's do simple average of step progress for now or use the TZ logic of total progress
-        total_progress = sum([
-            100 if s.status == 'completed' else 
-            (round((s.produced_qty / s.input_qty) * 100) if s.input_qty > 0 else 0)
-            for s in steps
-        ])
+        total_progress = 0
+        for s in steps:
+            if s.status == 'completed':
+                total_progress += 100
+            else:
+                input_q = s.input_qty or 0
+                produced = s.produced_qty or 0
+                if input_q > 0:
+                    total_progress += round((produced / input_q) * 100)
+                    
         return round(total_progress / len(steps))
 
     def validate(self, data):
