@@ -757,8 +757,13 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
             # Allow workers to access specific steps for claiming/reporting
             qs = ProductionStep.objects.all()
         else:
-            # For workers, default list only shows active/assigned tasks
-            qs = ProductionStep.objects.filter(assigned_to=user)
+            # For workers, show tasks assigned to them OR unassigned tasks in the general pool
+            qs = ProductionStep.objects.filter(
+                Q(assigned_to=user) | Q(assigned_to__isnull=True)
+            )
+            # If user has specific skills, filter pool by those skills
+            if hasattr(user, 'assigned_stages') and user.assigned_stages:
+                qs = qs.filter(step__in=user.assigned_stages)
             
         # Priority Logic
         from django.db.models import Case, When, Value, IntegerField
@@ -778,11 +783,19 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def available(self, request):
-        """Returns pending tasks explicitly assigned to the worker and ready to start"""
+        """Returns pending tasks ready to start (assigned or in pool)"""
         user = request.user
         
-        # Workers only see what is assigned to them
-        qs = ProductionStep.objects.filter(assigned_to=user, status='pending')
+        # Base filter: Assigned to current user OR Unassigned
+        qs = ProductionStep.objects.filter(
+            Q(assigned_to=user) | Q(assigned_to__isnull=True),
+            status='pending'
+        )
+        
+        # Filter by skills if they are set
+        if hasattr(user, 'assigned_stages') and user.assigned_stages:
+            qs = qs.filter(step__in=user.assigned_stages)
+            
         available_steps = [step for step in qs if step.is_ready_to_start]
         
         serializer = self.get_serializer(available_steps, many=True)
@@ -806,7 +819,7 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def claim(self, request, pk=None):
-        """Start an assigned step and move to in_progress"""
+        """Start an assigned step or claim from pool and move to in_progress"""
         user = request.user
         step = self.get_object()
         
@@ -816,11 +829,23 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 status=400
             )
 
-        if step.assigned_to != user and user.role != 'admin':
-            return Response({"error": "Ushbu vazifa sizga biriktirilmagan."}, status=403)
+        # Allow if already assigned to current user OR unassigned pool
+        if step.assigned_to and step.assigned_to != user and user.role != 'admin':
+            return Response({"error": "Ushbu vazifa boshqa ishchiga biriktirilgan."}, status=403)
+        
+        # Skill-set validation when claiming from pool
+        if not step.assigned_to and hasattr(user, 'assigned_stages') and user.assigned_stages:
+            if step.step not in user.assigned_stages:
+                return Response({
+                    "error": f"Sizga '{step.step}' bosqichi biriktirilmagan. Profilingizni tekshiring."
+                }, status=403)
         
         if step.status == 'completed':
             return Response({"error": "Vazifa allaqachon tugatilgan."}, status=400)
+
+        # Force assign to user if claimed from pool
+        if not step.assigned_to:
+            step.assigned_to = user
 
         step.status = 'in_progress'
         if not step.started_at:
@@ -829,7 +854,7 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         
         ActivityLog.objects.create(
             user=user,
-            action=f"Started assigned task: {step.get_step_display()} for Order #{step.order.order_number}"
+            action=f"Started/Claimed task: {step.get_step_display()} for Order #{step.order.order_number}"
         )
         
         return Response(self.get_serializer(step).data)
@@ -904,9 +929,15 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         """Returns pending counts and total available quantities per step"""
         user = request.user
         
-        # If worker, only show stats for tasks assigned to THEM
+        # If worker, show stats for tasks they can actually claim
         if user.role == 'worker':
-            pending_steps = ProductionStep.objects.filter(status='pending', assigned_to=user)
+            qs = ProductionStep.objects.filter(
+                Q(status='pending'),
+                Q(assigned_to=user) | Q(assigned_to__isnull=True)
+            )
+            if hasattr(user, 'assigned_stages') and user.assigned_stages:
+                qs = qs.filter(step__in=user.assigned_stages)
+            pending_steps = qs
         else:
             # If admin, show all unassigned pending tasks
             pending_steps = ProductionStep.objects.filter(status='pending', assigned_to__isnull=True)
