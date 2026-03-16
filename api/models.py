@@ -1593,6 +1593,15 @@ class ProductTemplate(BaseModel):
     print_type = models.CharField(max_length=100, null=True, blank=True, help_text="Bosma turi (1+1, 4+4)")
     lamination = models.CharField(max_length=100, null=True, blank=True, help_text="Laminatsiya turi")
     
+    # Professional Layout Specs (PrintERP Phase 4+)
+    bleed_mm = models.DecimalField(max_digits=5, decimal_places=2, default=3.0, help_text="Bleed (mm)")
+    margin_top_mm = models.DecimalField(max_digits=5, decimal_places=2, default=15.0, help_text="Yuqori margin (mm)")
+    margin_bottom_mm = models.DecimalField(max_digits=5, decimal_places=2, default=15.0, help_text="Pastki margin (mm)")
+    margin_inner_mm = models.DecimalField(max_digits=5, decimal_places=2, default=20.0, help_text="Ichki margin / Gutter (mm)")
+    margin_outer_mm = models.DecimalField(max_digits=5, decimal_places=2, default=15.0, help_text="Tashqi margin (mm)")
+    column_count = models.IntegerField(default=1, help_text="Grid ustunlari soni")
+    safe_area_padding_mm = models.DecimalField(max_digits=5, decimal_places=2, default=5.0, help_text="Safe area padding (mm)")
+    
     class Meta:
         ordering = ['category', 'name']
         verbose_name = "Product Template"

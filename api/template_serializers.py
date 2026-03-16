@@ -89,6 +89,8 @@ class ProductTemplateSerializer(serializers.ModelSerializer):
             'default_width', 'default_height', 'default_depth',
             'page_count', 'format', 'binding_type', 'paper_type',
             'paper_weight', 'cover_weight', 'print_type', 'lamination',
+            'bleed_mm', 'margin_top_mm', 'margin_bottom_mm', 'margin_inner_mm',
+            'margin_outer_mm', 'column_count', 'safe_area_padding_mm',
             'layers', 'routing_steps', 'normatives',
             'created_at', 'updated_at', 'is_deleted'
         ]
