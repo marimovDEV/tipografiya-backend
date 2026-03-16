@@ -1755,10 +1755,19 @@ class ReportsView(APIView):
         ).order_by('-completed_count')
 
         # 5. Product Popularity
-        top_products = completed_orders.values('box_type').annotate(
+        # Support both box_type and book_name for Kitob-centric TZ
+        top_products_query = completed_orders.values('box_type', 'book_name').annotate(
             total_sold=Sum('quantity'),
             revenue=Sum('total_price')
         ).order_by('-revenue')[:5]
+        
+        top_products = []
+        for p in top_products_query:
+            top_products.append({
+                "box_type": p['book_name'] if p['book_name'] else (p['box_type'] if p['box_type'] else "Noma'lum"),
+                "total_sold": p['total_sold'],
+                "revenue": p['revenue']
+            })
 
         # 6. Chart Data (Daily Dynamics)
         daily_stats = Transaction.objects.filter(
@@ -1787,7 +1796,7 @@ class ReportsView(APIView):
                 "profit": [float((d['daily_income'] or 0) - (d['daily_expense'] or 0)) for d in daily_stats]
             },
             "inventory_health": {
-                "low_stock_count": Material.objects.filter(current_stock__lt=F('min_stock')).count()
+                "low_stock_count": Material.objects.filter(current_stock__lt=F('minimum_stock')).count()
             }
         })
 
@@ -1844,7 +1853,9 @@ class DashboardView(APIView):
         order_financials = completed_orders_month.aggregate(
             total_rev=Sum('total_price')
         )
-        internal_profit = float(order_financials['total_rev'] or 0)
+        total_revenue_month = float(order_financials['total_rev'] or 0)
+        # Internal profit is monthly income from transactions minus expenses
+        internal_profit = monthly_profit 
 
         # 3. PRODUCTION STAGES (Visual)
         # Group by step and status

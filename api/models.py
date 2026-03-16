@@ -1126,7 +1126,15 @@ class Attendance(models.Model):
     
     def calculate_duration(self):
         if self.clock_out:
-            duration = (self.clock_out - self.clock_in).total_seconds() / 3600
+            # Total seconds from clock-in to clock-out
+            delta = (self.clock_out - self.clock_in).total_seconds()
+            
+            # Subtract break minutes
+            work_seconds = delta - (self.total_break_minutes * 60)
+            
+            # Convert to hours
+            duration = max(0, work_seconds / 3600)
+            
             self.total_hours = Decimal(str(round(duration, 2)))
             self.save()
             return self.total_hours

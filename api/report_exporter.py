@@ -76,7 +76,7 @@ class ReportExporter:
         # Data
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         orders = Order.objects.filter(
-            created_date=target_date,
+            created_at__date=target_date,
             is_deleted=False
         ).select_related('client')
         
