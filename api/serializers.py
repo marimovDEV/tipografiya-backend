@@ -167,8 +167,28 @@ class ProductionStepSerializer(serializers.ModelSerializer):
     deadline = serializers.ReadOnlyField(source='order.deadline')
     client_name = serializers.ReadOnlyField(source='order.client.full_name')
     quantity = serializers.ReadOnlyField(source='order.quantity')
-    progress_percent = serializers.SerializerMethodField()
-    
+    all_steps = serializers.SerializerMethodField()
+    # Order Specs
+    dimensions = serializers.ReadOnlyField(source='order.dimensions')
+    paper_type = serializers.ReadOnlyField(source='order.paper_type')
+    paper_density = serializers.ReadOnlyField(source='order.paper_density')
+    print_colors = serializers.ReadOnlyField(source='order.print_colors')
+    print_type = serializers.ReadOnlyField(source='order.print_type')
+    lacquer_type = serializers.ReadOnlyField(source='order.lacquer_type')
+    cutting_type = serializers.ReadOnlyField(source='order.cutting_type')
+    mockup_url = serializers.ReadOnlyField(source='order.mockup_url')
+    additional_processing = serializers.ReadOnlyField(source='order.additional_processing')
+    order_notes = serializers.ReadOnlyField(source='order.notes')
+    # Book Specs
+    book_name = serializers.ReadOnlyField(source='order.book_name')
+    page_count = serializers.ReadOnlyField(source='order.page_count')
+    cover_type = serializers.ReadOnlyField(source='order.cover_type')
+    binding_type = serializers.ReadOnlyField(source='order.binding_type')
+    paper_weight = serializers.ReadOnlyField(source='order.paper_weight')
+    cover_weight = serializers.ReadOnlyField(source='order.cover_weight')
+    lamination = serializers.ReadOnlyField(source='order.lamination')
+    format = serializers.ReadOnlyField(source='order.format')
+
     class Meta:
         model = ProductionStep
         fields = [
@@ -178,7 +198,12 @@ class ProductionStepSerializer(serializers.ModelSerializer):
             'estimated_end', 'estimated_duration_minutes', 'actual_duration_minutes',
             'priority', 'queue_position', 'order_number', 'product_name',
             'step_name_display', 'deadline', 'client_name', 'quantity',
-            'available_qty', 'is_ready_to_start', 'production_logs', 'progress_percent'
+            'available_qty', 'is_ready_to_start', 'production_logs', 'progress_percent',
+            'all_steps', 'dimensions', 'paper_type', 'paper_density', 'print_colors',
+            'print_type', 'lacquer_type', 'cutting_type', 'mockup_url',
+            'additional_processing', 'order_notes', 'book_name', 'page_count',
+            'cover_type', 'binding_type', 'paper_weight', 'cover_weight',
+            'lamination', 'format'
         ]
 
     def get_assigned_to_name(self, obj):
@@ -190,6 +215,18 @@ class ProductionStepSerializer(serializers.ModelSerializer):
         if obj.input_qty > 0:
             return round((obj.produced_qty / obj.input_qty) * 100)
         return 0
+
+    def get_all_steps(self, obj):
+        steps = obj.order.production_steps.all().order_by('sequence')
+        return [
+            {
+                "id": str(s.id),
+                "step": s.step,
+                "sequence": s.sequence,
+                "status": s.status,
+                "step_display": s.get_step_display()
+            } for s in steps
+        ]
 
 class OrderSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
