@@ -701,6 +701,23 @@ class ProductionStep(models.Model):
         ('problem', 'Problem / Blocked'),
     )
 
+    STEP_CHOICES = (
+        ('sklad', 'Sklad'),
+        ('cutting', 'Kesish'),
+        ('printing', 'Bosma (Universal)'),
+        ('gluing', 'Yelimlash'),
+        ('packaging', 'Qadoqlash'),
+        ('tayyor_sklad', 'Tayyor (Sklad)'),
+        ('design', 'Dizayn'),
+        ('prepress', 'Pre-press'),
+        ('lamination', 'Laminatsiya'),
+        ('lacquering', 'Laklash'),
+        ('die_cutting', 'Die-cutting'),
+        ('folding', 'Buklash'),
+        ('drying', 'Quritish'),
+        ('qc', 'Sifat nazorati'),
+    )
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='production_steps')
     step = models.CharField(max_length=100) # Store stage name directly
     sequence = models.IntegerField(default=1)

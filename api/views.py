@@ -900,14 +900,22 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
             
             # Validation
             total_active = step.produced_qty + step.defect_qty
-            if step.sequence > 1:
+            
+            # If nothing reported yet, allow it
+            if new_produced == 0 and new_defect == 0:
+                pass
+            elif step.sequence > 1:
                 prev_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence - 1).first()
                 if prev_step and total_active > prev_step.produced_qty:
                      return Response({
                         "error": f"Xatolik: Oldingi bosqichda faqat {prev_step.produced_qty} ta mahsulot tayyorlangan. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
-            elif total_active > step.order.quantity:
-                return Response({
+            else:
+                # For first step, use order quantity as limit
+                if total_active > step.order.quantity:
+                    return Response({
+                        "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
+                    }, status=400)
                     "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                 }, status=400)
 
