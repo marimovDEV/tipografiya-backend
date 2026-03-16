@@ -48,19 +48,20 @@ MIDDLEWARE = [
 APPEND_SLASH = True
 
 # CORS Settings
-CORS_ALLOW_ALL_ORIGINS = DEBUG # Allow all only in DEBUG mode
-if not DEBUG:
-    CORS_ALLOWED_ORIGINS = [
-        "https://tipografiya-nashr.vercel.app",
-        "http://localhost:3000",
-        "https://tapi.pizzacentergarden.uz",
-    ]
+CORS_ALLOW_ALL_ORIGINS = True # Set to True to avoid CORS issues during testing
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = os.environ.get(
-    'CSRF_TRUSTED_ORIGINS', 
-    'http://localhost:3000,https://tipografiya-nashr.vercel.app,https://tapi.pizzacentergarden.uz'
-).split(',')
+CORS_ALLOWED_ORIGINS = [
+    "https://tipografiya-nashr.vercel.app",
+    "http://localhost:3000",
+    "https://tapi.pizzacentergarden.uz",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://tipografiya-nashr.vercel.app",
+    "http://localhost:3000",
+    "https://tapi.pizzacentergarden.uz",
+]
 
 ROOT_URLCONF = 'core.urls'
 
