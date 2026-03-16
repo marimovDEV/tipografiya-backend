@@ -187,12 +187,23 @@ class UserViewSet(viewsets.ModelViewSet):
         # Auto-complete any active production tasks
         active_steps = ProductionStep.objects.filter(assigned_to=user, status='in_progress')
         for step in active_steps:
+            # If no progress reported yet, assume full success
+            if step.produced_qty == 0 and step.defect_qty == 0:
+                step.produced_qty = step.input_qty
+            
             step.status = 'completed'
             step.completed_at = timezone.now()
             step.save()
+
+            # Cascade to next step
+            next_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence + 1).first()
+            if next_step:
+                next_step.input_qty = step.produced_qty
+                next_step.save()
+
             ActivityLog.objects.create(
                 user=user,
-                action=f"Auto-completed active task on shift end: {step.get_step_display()} for Order #{step.order.order_number}"
+                action=f"Auto-completed task on shift end: {step.get_step_display()} for Order #{step.order.order_number}"
             )
             
         user.status = 'away'
@@ -927,12 +938,29 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete_step(self, request, pk=None):
-        """Mark step as completed"""
+        """Mark step as completed and cascade quantities"""
         step = self.get_object()
+        
+        # If no progress reported yet, assume full success
+        if step.produced_qty == 0 and step.defect_qty == 0:
+            step.produced_qty = step.input_qty
+            
         step.status = 'completed'
         from django.utils import timezone
         step.completed_at = timezone.now()
         step.save()
+
+        # Cascade produced_qty to next stage's input_qty
+        next_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence + 1).first()
+        if next_step:
+            next_step.input_qty = step.produced_qty
+            next_step.save()
+
+        ActivityLog.objects.create(
+            user=request.user,
+            action=f"Completed task: {step.get_step_display()} for Order #{step.order.order_number}"
+        )
+
         return Response(self.get_serializer(step).data)
 
     @action(detail=False, methods=['get'])
@@ -2032,12 +2060,23 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             # Auto-complete any active production tasks
             active_steps = ProductionStep.objects.filter(assigned_to=request.user, status='in_progress')
             for step in active_steps:
+                # If no progress reported yet, assume full success
+                if step.produced_qty == 0 and step.defect_qty == 0:
+                    step.produced_qty = step.input_qty
+
                 step.status = 'completed'
                 step.completed_at = timezone.now()
                 step.save()
+
+                # Cascade to next step
+                next_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence + 1).first()
+                if next_step:
+                    next_step.input_qty = step.produced_qty
+                    next_step.save()
+
                 ActivityLog.objects.create(
                     user=request.user,
-                    action=f"Auto-completed active task on clock out: {step.get_step_display()} for Order #{step.order.order_number}"
+                    action=f"Auto-completed task on clock out: {step.get_step_display()} for Order #{step.order.order_number}"
                 )
             
             # Also update user status
