@@ -218,7 +218,7 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username', '').strip()
+        username = str(request.data.get('username', '')).strip()
         password = request.data.get('password', '')
         
         # Case-insensitive username lookup
