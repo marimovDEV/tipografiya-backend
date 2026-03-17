@@ -49,7 +49,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def list_stats(self, request):
         users = User.objects.filter(role='worker')
         data = []
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         for user in users:
             tasks_today = user.assigned_tasks.filter(created_at__date=today).count()
@@ -150,7 +150,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='start-shift')
     def start_shift(self, request):
         user = request.user
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         # Create or get attendance for today
         attendance, created = Attendance.objects.get_or_create(
@@ -175,7 +175,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='end-shift')
     def end_shift(self, request):
         user = request.user
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         attendance = Attendance.objects.filter(employee=user, date=today).first()
         if attendance:
@@ -289,7 +289,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 category='Mijoz to\'lovi',
                 client=client,
                 payment_method=method,
-                date=timezone.now().date(),
+                date=timezone.localdate(),
                 description=description or f"{client.full_name} tomonidan to'lov"
             )
             return Response(TransactionSerializer(transaction).data)
@@ -1399,7 +1399,7 @@ class CalculateOrderView(APIView):
                 production_days += 2
             
             total_days = base_days + production_days
-            estimated_deadline = timezone.now().date() + timedelta(days=total_days)
+            estimated_deadline = timezone.localdate() + timedelta(days=total_days)
             
             # Capacity status (simplified)
             capacity_status = {
@@ -1411,7 +1411,7 @@ class CalculateOrderView(APIView):
             if capacity_status['current_load'] > 15:
                 capacity_status['status'] = 'high'
                 total_days += 1
-                estimated_deadline = timezone.now().date() + timedelta(days=total_days)
+                estimated_deadline = timezone.localdate() + timedelta(days=total_days)
             
             response_data = {
                 "materials": usage,
@@ -1914,7 +1914,7 @@ class DashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         start_of_month = today.replace(day=1)
         
         # 1. CORE STATS
@@ -2111,7 +2111,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def clock_in(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         attendance, created = Attendance.objects.get_or_create(
             employee=request.user,
             date=today,
@@ -2128,7 +2128,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def clock_out(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         try:
             attendance = Attendance.objects.get(employee=request.user, date=today)
             if attendance.clock_out:
@@ -2171,7 +2171,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def start_break(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         try:
             attendance = Attendance.objects.get(employee=request.user, date=today)
             if attendance.status != 'working':
@@ -2191,7 +2191,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def end_break(self, request):
-        today = timezone.now().date()
+        today = timezone.localdate()
         try:
             attendance = Attendance.objects.get(employee=request.user, date=today)
             if attendance.status != 'on_break' or not attendance.break_start:
@@ -2223,7 +2223,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             except (User.DoesNotExist, ValueError):
                 return Response({"error": "Foydalanuvchi topilmadi"}, status=status.HTTP_404_NOT_FOUND)
                 
-        today = timezone.now().date()
+        today = timezone.localdate()
         attendance = Attendance.objects.filter(employee=user, date=today).first()
         if attendance:
             return Response(AttendanceSerializer(attendance).data)
