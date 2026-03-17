@@ -499,6 +499,21 @@ class OrderViewSet(viewsets.ModelViewSet):
         try:
             if order.template:
                 # Use Dynamic Template
+                settings = PricingSettings.load()
+                assigned_mapping = {
+                    'sklad': settings.default_warehouse_user,
+                    'cutting': settings.default_cutter_user,
+                    'printing': settings.default_printer_user,
+                    'gluing': settings.default_finisher_user,
+                    'packaging': settings.default_finisher_user,
+                    'tayyor_sklad': settings.default_warehouse_user,
+                    'Sklad': settings.default_warehouse_user,
+                    'Kesish': settings.default_cutter_user,
+                    'Bosma (Universal)': settings.default_printer_user,
+                    'Yelimlash': settings.default_finisher_user,
+                    'Qadoqlash': settings.default_finisher_user,
+                    'Tayyor (Sklad)': settings.default_warehouse_user,
+                }
                 stages = order.template.stages.all().order_by('sequence')
                 for stage in stages:
                     ProductionStep.objects.create(
@@ -507,6 +522,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         sequence=stage.sequence,
                         input_qty=order.quantity if stage.sequence == 1 else 0,
                         status='pending',
+                        assigned_to=assigned_mapping.get(stage.stage_name)
                     )
             else:
                 # Fallback legacy logic
@@ -766,6 +782,17 @@ class ProductionTemplateViewSet(viewsets.ModelViewSet):
     queryset = ProductionTemplate.objects.all()
     serializer_class = ProductionTemplateSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        template = serializer.save()
+        # Default stages requested by user
+        default_stages = ['sklad', 'cutting', 'printing', 'gluing', 'packaging', 'tayyor_sklad']
+        for idx, stage_code in enumerate(default_stages, start=1):
+            TemplateStage.objects.create(
+                template=template,
+                stage_name=stage_code,
+                sequence=idx
+            )
 
 class TemplateStageViewSet(viewsets.ModelViewSet):
     queryset = TemplateStage.objects.all().order_by('sequence')
