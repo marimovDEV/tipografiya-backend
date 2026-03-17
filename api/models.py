@@ -423,6 +423,13 @@ class TemplateStage(models.Model):
     stage_name = models.CharField(max_length=100) # Code of the stage, e.g., 'cutting', 'printing'
     sequence = models.IntegerField()
     
+    # New Professional ERP enhancements
+    department = models.CharField(max_length=100, blank=True, null=True)
+    auto_start = models.BooleanField(default=False)
+    requires_operator = models.BooleanField(default=True)
+    machine = models.CharField(max_length=100, blank=True, null=True)
+    estimated_time_minutes = models.IntegerField(blank=True, null=True)
+    
     class Meta:
         ordering = ['sequence']
         unique_together = ('template', 'sequence')
@@ -731,6 +738,13 @@ class ProductionStep(models.Model):
     notes = models.TextField(blank=True, null=True)
     produced_qty = models.IntegerField(default=0)
     defect_qty = models.IntegerField(default=0)
+    
+    # New Professional ERP enhancements (copied from TemplateStage)
+    department = models.CharField(max_length=100, blank=True, null=True)
+    auto_start = models.BooleanField(default=False)
+    requires_operator = models.BooleanField(default=True)
+    machine = models.CharField(max_length=100, blank=True, null=True)
+    estimated_time_minutes = models.IntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
     # Phase 3: Production Scheduling (PrintERP TZ Section 7)

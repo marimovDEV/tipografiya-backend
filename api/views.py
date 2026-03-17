@@ -522,7 +522,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                         sequence=stage.sequence,
                         input_qty=order.quantity if stage.sequence == 1 else 0,
                         status='pending',
-                        assigned_to=assigned_mapping.get(stage.stage_name)
+                        assigned_to=assigned_mapping.get(stage.stage_name),
+                        # New fields mapping
+                        department=stage.department,
+                        auto_start=stage.auto_start,
+                        requires_operator=stage.requires_operator,
+                        machine=stage.machine,
+                        estimated_time_minutes=stage.estimated_time_minutes
                     )
             else:
                 # Fallback legacy logic

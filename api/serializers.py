@@ -140,16 +140,40 @@ class WarehouseLogSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class TemplateStageSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
     class Meta:
         model = TemplateStage
-        fields = '__all__'
+        fields = ['id', 'stage_name', 'sequence', 'department', 'auto_start', 'requires_operator', 'machine', 'estimated_time_minutes']
 
 class ProductionTemplateSerializer(serializers.ModelSerializer):
-    stages = TemplateStageSerializer(many=True, read_only=True)
+    stages = TemplateStageSerializer(many=True, required=False)
     
     class Meta:
         model = ProductionTemplate
         fields = '__all__'
+
+    def create(self, validated_data):
+        stages_data = validated_data.pop('stages', [])
+        template = ProductionTemplate.objects.create(**validated_data)
+        for stage_data in stages_data:
+            TemplateStage.objects.create(template=template, **stage_data)
+        return template
+
+    def update(self, instance, validated_data):
+        stages_data = validated_data.pop('stages', None)
+        instance = super().update(instance, validated_data)
+
+        if stages_data is not None:
+            # Simple approach: delete existing and recreate
+            # For a more robust approach, you'd match by ID, but for templates this is usually fine
+            instance.stages.all().delete()
+            for stage_data in stages_data:
+                # Remove ID if provided to avoid conflict during creation
+                stage_data.pop('id', None)
+                TemplateStage.objects.create(template=instance, **stage_data)
+        
+        return instance
 
 class ProductionLogSerializer(serializers.ModelSerializer):
     worker_name = serializers.ReadOnlyField(source='worker.get_full_name')
