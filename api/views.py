@@ -938,17 +938,40 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         step_id = request.data.get('production_step_id')
         produced_qty = request.data.get('produced_qty', 0)
         defect_qty = request.data.get('defect_qty', 0)
+        produced_pages = request.data.get('produced_pages', None)
+        defect_pages = request.data.get('defect_pages', None)
         notes = request.data.get('notes', '')
         
         try:
-            # Safety cast
+            from decimal import Decimal
+            step = ProductionStep.objects.get(id=step_id)
+            order = step.order
+            
+            # Conversion logic: Pages -> Units (Books)
+            if produced_pages is not None:
+                try:
+                    pages = Decimal(str(produced_pages))
+                    if order.page_count and order.page_count > 0:
+                        # 1 book = order.page_count pages
+                        # X pages = X / order.page_count books
+                        produced_qty = pages / Decimal(str(order.page_count))
+                except (ValueError, TypeError, Exception):
+                    pass
+
+            if defect_pages is not None:
+                try:
+                    d_pages = Decimal(str(defect_pages))
+                    if order.page_count and order.page_count > 0:
+                        defect_qty = d_pages / Decimal(str(order.page_count))
+                except (ValueError, TypeError, Exception):
+                    pass
+
+            # Safety cast to Decimal
             try:
-                new_produced = int(produced_qty)
-                new_defect = int(defect_qty)
+                new_produced = Decimal(str(produced_qty))
+                new_defect = Decimal(str(defect_qty))
             except (ValueError, TypeError):
                 return Response({"error": "Soni noto'g'ri formatda kiritildi"}, status=400)
-
-            step = ProductionStep.objects.get(id=step_id)
 
             # Cumulative logic
             step.produced_qty += new_produced
@@ -964,7 +987,7 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 prev_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence - 1).first()
                 if prev_step and total_active > prev_step.produced_qty:
                      return Response({
-                        "error": f"Xatolik: Oldingi bosqichda faqat {prev_step.produced_qty} ta mahsulot tayyorlangan. Undan ko'pini kiritib bo'lmaydi."
+                        "error": f"Xatolik: Oldingi bosqichda faqat {float(prev_step.produced_qty):.2f} ta mahsulot tayyorlangan. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
             else:
                 # For first step, use order quantity as limit
@@ -973,8 +996,8 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
 
-            # Auto-completion check
-            if total_active >= step.input_qty:
+            # Auto-completion check (with a small epsilon for decimal float precision)
+            if total_active >= (step.input_qty - Decimal('0.0001')):
                 step.status = 'completed'
                 from django.utils import timezone
                 step.completed_at = timezone.now()

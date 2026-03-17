@@ -730,14 +730,14 @@ class ProductionStep(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='production_steps')
     step = models.CharField(max_length=100) # Store stage name directly
     sequence = models.IntegerField(default=1)
-    input_qty = models.IntegerField(default=0)
+    input_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     started_at = models.DateTimeField(blank=True, null=True)
     completed_at = models.DateTimeField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
-    produced_qty = models.IntegerField(default=0)
-    defect_qty = models.IntegerField(default=0)
+    produced_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    defect_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
     
     # New Professional ERP enhancements (copied from TemplateStage)
     department = models.CharField(max_length=100, blank=True, null=True)
@@ -2171,8 +2171,8 @@ class ProductionLog(models.Model):
         on_delete=models.CASCADE,
         related_name='quantity_logs'
     )
-    produced_qty = models.IntegerField(default=0)
-    defect_qty = models.IntegerField(default=0)
+    produced_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    defect_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
