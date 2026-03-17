@@ -797,16 +797,15 @@ class ProductionStep(models.Model):
     @property
     def is_ready_to_start(self):
         """
-        Check if this step's dependencies are complete OR partially started.
-        In partial flow, we can start if the previous step has produced >= 1 unit.
+        Check if this step's dependencies are complete.
+        Strict Sequential Model: Only allowed to start if previous step is 'completed'.
         """
         if self.sequence <= 1:
             return True
             
         previous_step = ProductionStep.objects.filter(order=self.order, sequence=self.sequence - 1).first()
         if previous_step:
-            produced = previous_step.produced_qty or 0
-            return produced > 0 or previous_step.status == 'completed'
+            return previous_step.status == 'completed'
             
         return True
 
