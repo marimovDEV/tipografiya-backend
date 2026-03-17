@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Count, Sum, F, Avg, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
@@ -798,6 +798,27 @@ class TemplateStageViewSet(viewsets.ModelViewSet):
     queryset = TemplateStage.objects.all().order_by('sequence')
     serializer_class = TemplateStageSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def reorder(self, request):
+        """
+        Expects a list of stage IDs in their new order: [id1, id2, id3, ...]
+        """
+        ordered_ids = request.data.get('ordered_ids', [])
+        if not isinstance(ordered_ids, list):
+            return Response({"error": "ordered_ids must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            with transaction.atomic():
+                # Step 1: Set sequences to negative to avoid unique constraint collisions
+                for index, stage_id in enumerate(ordered_ids, start=1):
+                    TemplateStage.objects.filter(id=stage_id).update(sequence=-index)
+                # Step 2: Set them to positive correct sequences
+                for index, stage_id in enumerate(ordered_ids, start=1):
+                    TemplateStage.objects.filter(id=stage_id).update(sequence=index)
+            return Response({"status": "success"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ProductionStepViewSet(viewsets.ModelViewSet):
     serializer_class = ProductionStepSerializer
