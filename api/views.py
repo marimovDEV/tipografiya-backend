@@ -973,6 +973,12 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
 
+            # Auto-completion check
+            if total_active >= step.input_qty:
+                step.status = 'completed'
+                from django.utils import timezone
+                step.completed_at = timezone.now()
+            
             step.save()
             
             # Create Production Log history entry
@@ -1005,9 +1011,12 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         """Mark step as completed and cascade quantities"""
         step = self.get_object()
         
-        # If no progress reported yet, assume full success
-        if step.produced_qty == 0 and step.defect_qty == 0:
-            step.produced_qty = step.input_qty
+        # Strict validation: Cannot complete if quantity is missing
+        total_accounted = step.produced_qty + step.defect_qty
+        if total_accounted < step.input_qty:
+            return Response({
+                "error": f"⚠ Etap hali tugamagan. Qolgan: {step.input_qty - total_accounted} dona. Iltimos miqdorni to'liq kiriting."
+            }, status=status.HTTP_400_BAD_REQUEST)
             
         step.status = 'completed'
         from django.utils import timezone
