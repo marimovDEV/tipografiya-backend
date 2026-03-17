@@ -150,8 +150,8 @@ class ProductTemplateLayerAdmin(admin.ModelAdmin):
 
 @admin.register(ProductTemplateRouting)
 class ProductTemplateRoutingAdmin(admin.ModelAdmin):
-    list_display = ('template', 'sequence', 'step_name', 'required_machine_type', 'qc_checkpoint', 'is_optional')
-    list_filter = ('template', 'step_name', 'qc_checkpoint', 'is_optional')
+    list_display = ('template', 'sequence', 'stage_name', 'machine', 'department', 'estimated_time_minutes')
+    list_filter = ('template', 'department', 'machine')
     ordering = ('template', 'sequence')
 
 @admin.register(MaterialNormative)

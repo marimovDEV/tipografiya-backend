@@ -1718,34 +1718,19 @@ class ProductTemplateRouting(BaseModel):
     Production routing/workflow for template.
     Defines the sequence of production steps required.
     """
-    STEP_CHOICES = (
-        ('design', 'Dizayn'),
-        ('prepress', 'Pre-press'),
-        ('cutting', 'Kesish'),
-        ('printing', 'Chop etish'),
-        ('lamination', 'Laminatsiya'),
-        ('lacquering', 'Laklash'),
-        ('die_cutting', 'Die-cutting'),
-        ('gluing', 'Yelimlash'),
-        ('folding', 'Buklash'),
-        ('drying', 'Quritish'),
-        ('packaging', 'Qadoqlash'),
-        ('qc', 'Sifat nazorati'),
-    )
-    
     template = models.ForeignKey(ProductTemplate, on_delete=models.CASCADE, related_name='routing_steps')
     sequence = models.IntegerField(help_text="Bosqich tartibi (1, 2, 3...)")
-    step_name = models.CharField(max_length=50, choices=STEP_CHOICES)
+    stage_name = models.CharField(max_length=100) # Simplified name like 'Sklad'
     
-    # Machine requirements
-    required_machine_type = models.CharField(
-        max_length=50,
-        blank=True,
-        null=True,
-        help_text="Kerakli stanok turi"
-    )
+    # New Professional ERP enhancements
+    department = models.CharField(max_length=100, blank=True, null=True)
+    auto_start = models.BooleanField(default=False)
+    requires_operator = models.BooleanField(default=True)
+    machine = models.CharField(max_length=100, blank=True, null=True)
+    estimated_time_minutes = models.IntegerField(blank=True, null=True)
     
-    # Time estimation
+    # Legacy fields (keeping for compatibility or migration if needed)
+    step_name = models.CharField(max_length=50, blank=True, null=True) # Legacy choice-based name
     estimated_time_per_unit = models.DecimalField(
         max_digits=10,
         decimal_places=2,

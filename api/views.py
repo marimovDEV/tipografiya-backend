@@ -497,39 +497,27 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         # Auto-create production steps
         try:
-            if order.template:
-                # Use Dynamic Template
-                settings = PricingSettings.load()
-                assigned_mapping = {
-                    'sklad': settings.default_warehouse_user,
-                    'cutting': settings.default_cutter_user,
-                    'printing': settings.default_printer_user,
-                    'gluing': settings.default_finisher_user,
-                    'packaging': settings.default_finisher_user,
-                    'tayyor_sklad': settings.default_warehouse_user,
-                    'Sklad': settings.default_warehouse_user,
-                    'Kesish': settings.default_cutter_user,
-                    'Bosma (Universal)': settings.default_printer_user,
-                    'Yelimlash': settings.default_finisher_user,
-                    'Qadoqlash': settings.default_finisher_user,
-                    'Tayyor (Sklad)': settings.default_warehouse_user,
-                }
-                stages = order.template.stages.all().order_by('sequence')
-                for stage in stages:
-                    ProductionStep.objects.create(
-                        order=order,
-                        step=stage.stage_name,
-                        sequence=stage.sequence,
-                        input_qty=order.quantity if stage.sequence == 1 else 0,
-                        status='pending',
-                        assigned_to=assigned_mapping.get(stage.stage_name),
-                        # New fields mapping
-                        department=stage.department,
-                        auto_start=stage.auto_start,
-                        requires_operator=stage.requires_operator,
-                        machine=stage.machine,
-                        estimated_time_minutes=stage.estimated_time_minutes
-                    )
+            template_id = self.request.data.get('product_template_id')
+            if template_id:
+                try:
+                    product_template = ProductTemplate.objects.get(id=template_id)
+                    # Automatically create production steps from template routing
+                    routing_steps = product_template.routing_steps.all().order_by('sequence')
+                    
+                    for step in routing_steps:
+                        ProductionStep.objects.create(
+                            order=order,
+                            step=step.stage_name or step.step_name or "Noma'lum",
+                            sequence=step.sequence,
+                            status='pending',
+                            department=step.department,
+                            auto_start=step.auto_start,
+                            requires_operator=step.requires_operator,
+                            machine=step.machine,
+                            estimated_time_minutes=step.estimated_time_minutes
+                        )
+                except ProductTemplate.DoesNotExist:
+                    pass
             else:
                 # Fallback legacy logic
                 settings = PricingSettings.load()
@@ -2042,7 +2030,7 @@ class DashboardView(APIView):
         return Response({
             "stats": {
                 "total_orders": total_orders,
-                "active_orders": active_orders,
+                "active_orders": active_orders.count(),
                 "today_orders": today_orders_count,
                 "waiting_advance": waiting_advance_count,
                 "today_income": float(today_income),

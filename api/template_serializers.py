@@ -45,17 +45,15 @@ class ProductTemplateLayerSerializer(serializers.ModelSerializer):
 
 class ProductTemplateRoutingSerializer(serializers.ModelSerializer):
     """Serializer for product template routing"""
-    step_name_display = serializers.CharField(source='get_step_name_display', read_only=True)
-    
     class Meta:
         model = ProductTemplateRouting
         fields = [
-            'id', 'template', 'sequence', 'step_name', 'step_name_display',
-            'required_machine_type', 'estimated_time_per_unit', 'setup_time_minutes',
-            'qc_checkpoint', 'qc_checkpoint_criteria', 'is_optional', 'notes',
+            'id', 'template', 'sequence', 'stage_name', 'step_name',
+            'department', 'auto_start', 'requires_operator', 'machine',
+            'estimated_time_minutes', 'estimated_time_per_unit', 'setup_time_minutes',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'template', 'created_at', 'updated_at']
 
 
 class MaterialNormativeSerializer(serializers.ModelSerializer):
@@ -78,6 +76,8 @@ class ProductTemplateSerializer(serializers.ModelSerializer):
     """Serializer for product templates"""
     category_display = serializers.CharField(source='get_category_display', read_only=True)
     layers = ProductTemplateLayerSerializer(many=True, read_only=True)
+    # Support both names for transition/compatibility
+    stages = ProductTemplateRoutingSerializer(many=True, required=False, source='routing_steps')
     routing_steps = ProductTemplateRoutingSerializer(many=True, read_only=True)
     normatives = MaterialNormativeSerializer(many=True, read_only=True)
     
@@ -91,10 +91,36 @@ class ProductTemplateSerializer(serializers.ModelSerializer):
             'paper_weight', 'cover_weight', 'print_type', 'lamination',
             'bleed_mm', 'margin_top_mm', 'margin_bottom_mm', 'margin_inner_mm',
             'margin_outer_mm', 'column_count', 'safe_area_padding_mm',
-            'layers', 'routing_steps', 'normatives',
+            'layers', 'routing_steps', 'stages', 'normatives',
             'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted']
+
+    def create(self, validated_data):
+        stages_data = validated_data.pop('routing_steps', [])
+        template = ProductTemplate.objects.create(**validated_data)
+        
+        for stage_data in stages_data:
+            ProductTemplateRouting.objects.create(template=template, **stage_data)
+            
+        return template
+
+    def update(self, instance, validated_data):
+        stages_data = validated_data.pop('routing_steps', None)
+        
+        # Update template fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update stages if provided
+        if stages_data is not None:
+            # Simple approach: delete and recreate (stable for few stages)
+            instance.routing_steps.all().delete()
+            for stage_data in stages_data:
+                ProductTemplateRouting.objects.create(template=instance, **stage_data)
+                
+        return instance
 
 
 class ProductTemplateListSerializer(serializers.ModelSerializer):
