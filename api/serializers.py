@@ -168,6 +168,9 @@ class ProductionStepSerializer(serializers.ModelSerializer):
     client_name = serializers.ReadOnlyField(source='order.client.full_name')
     quantity = serializers.ReadOnlyField(source='order.quantity')
     all_steps = serializers.SerializerMethodField()
+    progress_percent = serializers.SerializerMethodField()
+    available_qty = serializers.ReadOnlyField()
+    is_ready_to_start = serializers.ReadOnlyField()
     # Order Specs
     dimensions = serializers.ReadOnlyField(source='order.dimensions')
     paper_type = serializers.ReadOnlyField(source='order.paper_type')
