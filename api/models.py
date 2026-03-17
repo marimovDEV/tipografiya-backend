@@ -495,7 +495,9 @@ class Order(models.Model):
     paper_height = models.FloatField(blank=True, null=True, help_text="Paper Height (cm)")
     
     quantity = models.IntegerField(default=1)
+    price_per_unit = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True, help_text="Sotilish narxi (1 dona)")
     total_price = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
+    total_cost = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True, help_text="Tan narxi (Jami)")
     advance_payment = models.DecimalField(max_digits=20, decimal_places=2, default=0, help_text="Vaziyatga qarab olingan avans")
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid')
     initial_payment_method = models.CharField(
@@ -789,10 +791,12 @@ class ProductionStep(models.Model):
             
         previous_step = ProductionStep.objects.filter(order=self.order, sequence=self.sequence - 1).first()
         if previous_step:
-            return previous_step.produced_qty > 0 or previous_step.status == 'completed'
+            produced = previous_step.produced_qty or 0
+            return produced > 0 or previous_step.status == 'completed'
             
         return True
 
+    @property
     @property
     def available_qty(self):
         """
@@ -800,16 +804,20 @@ class ProductionStep(models.Model):
         If it has a dependency (sequence > 1), it's: (dependency's produced) - (this step's total processed).
         If no dependency (sequence 1), it's the order total - (this step's total processed).
         """
-        processed_by_this_step = self.produced_qty + self.defect_qty
+        produced_now = self.produced_qty or 0
+        defects_now = self.defect_qty or 0
+        processed_by_this_step = produced_now + defects_now
         
         if self.sequence <= 1:
             return max(0, self.order.quantity - processed_by_this_step)
             
         previous_step = ProductionStep.objects.filter(order=self.order, sequence=self.sequence - 1).first()
         if previous_step:
-            return max(0, previous_step.produced_qty - processed_by_this_step)
+            prev_produced = previous_step.produced_qty or 0
+            return max(0, prev_produced - processed_by_this_step)
         
-        return max(0, self.input_qty - processed_by_this_step)
+        input_q = self.input_qty or 0
+        return max(0, input_q - processed_by_this_step)
     
     @property
     def duration_minutes(self):

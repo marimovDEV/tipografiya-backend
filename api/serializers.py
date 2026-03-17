@@ -247,9 +247,9 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'order_number', 'client', 'client_id', 'total_price', 'advance_payment',
+            'id', 'order_number', 'client', 'client_id', 'total_price', 'total_cost', 'advance_payment',
             'payment_status', 'status', 'deadline', 'completed_at', 'box_type',
-            'quantity', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
+            'quantity', 'price_per_unit', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
             'cutting_type', 'print_type', 'template',
             'template_id', 'production_steps', 'production_time_hours', 'is_delayed',
             'overall_progress', 'book_name', 'page_count', 'cover_type',
