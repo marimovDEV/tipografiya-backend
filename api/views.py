@@ -2030,7 +2030,7 @@ class DashboardView(APIView):
         return Response({
             "stats": {
                 "total_orders": total_orders,
-                "active_orders": active_orders.count(),
+                "active_orders": active_orders,
                 "today_orders": today_orders_count,
                 "waiting_advance": waiting_advance_count,
                 "today_income": float(today_income),
