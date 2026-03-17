@@ -797,7 +797,6 @@ class ProductionStep(models.Model):
         return True
 
     @property
-    @property
     def available_qty(self):
         """
         Calculates how many units are currently available to be processed by this step.
