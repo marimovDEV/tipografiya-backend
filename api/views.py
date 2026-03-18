@@ -2036,8 +2036,9 @@ class DashboardView(APIView):
             produced=Sum('produced_qty'),
             defect=Sum('defect_qty')
         )
-        today_produced_qty = today_production['produced'] or 0
-        today_defect_qty = today_production['defect'] or 0
+        # Ensure non-negative and integer for "Dona" display
+        today_produced_qty = max(0, int(round(today_production['produced'] or 0)))
+        today_defect_qty = max(0, int(round(today_production['defect'] or 0)))
         
         # Efficiency % (Today)
         total_attempted = today_produced_qty + today_defect_qty
