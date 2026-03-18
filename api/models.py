@@ -603,6 +603,38 @@ class Order(models.Model):
 
         super().save(*args, **kwargs)
 
+    def check_and_update_status(self):
+        """
+        Calculates if all production steps are completed and updates order status.
+        Handles precision issues by rounding.
+        """
+        steps = self.production_steps.all()
+        if not steps.exists():
+            return False
+            
+        all_done = True
+        for s in steps:
+            if s.status == 'completed':
+                continue
+            
+            # Use rounding to avoid float/decimal precision issues (e.g. 14.9999 < 15)
+            # Rounding to 2 decimal places is safe for product counts.
+            total_at_step = round(Decimal(str(s.produced_qty)) + Decimal(str(s.defect_qty)), 2)
+            input_q = round(Decimal(str(s.input_qty)), 2)
+            
+            if total_at_step < input_q - Decimal('0.01'):
+                all_done = False
+                break
+        
+        if all_done:
+            # Only transition if it's currently in a production-related state
+            if self.status in ['approved', 'in_production']:
+                self.status = 'ready'
+                self.completed_at = timezone.now()
+                self.save(update_fields=['status', 'completed_at'])
+                return True
+        return False
+
         # Create Transaction for Advance Payment if new order
         if is_new and self.advance_payment > 0:
             Transaction.objects.create(

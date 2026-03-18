@@ -998,6 +998,11 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 return Response({"error": "Soni noto'g'ri formatda kiritildi"}, status=400)
 
+            # Normalization & Validation (PrintERP TZ Fix)
+            # Prevent negative reporting as it breaks inventory and status logic
+            new_produced = max(Decimal('0'), new_produced)
+            new_defect = max(Decimal('0'), new_defect)
+
             # Cumulative logic
             step.produced_qty += new_produced
             step.defect_qty += new_defect
@@ -1021,13 +1026,19 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
 
-            # Auto-completion check (with a small epsilon for decimal float precision)
-            if total_active >= (step.input_qty - Decimal('0.0001')):
+            # Auto-completion check (with rounding for precision)
+            total_active = round(Decimal(str(step.produced_qty)) + Decimal(str(step.defect_qty)), 2)
+            input_q = round(Decimal(str(step.input_qty)), 2)
+            
+            if total_active >= input_q - Decimal('0.01'):
                 step.status = 'completed'
                 from django.utils import timezone
                 step.completed_at = timezone.now()
             
             step.save()
+            
+            # Check for order completion using the new centralized method
+            order.check_and_update_status()
             
             # Create Production Log history entry
             ProductionLog.objects.create(
@@ -1044,20 +1055,6 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 next_step.input_qty = step.produced_qty
                 next_step.save()
 
-            # Check for order completion (All production steps done)
-            if not order.production_steps.exclude(status='completed').exists():
-                if order.status != 'ready':
-                    order.status = 'ready'
-                    order.completed_at = timezone.now()
-                    order.save()
-                    
-                    # Log order completion
-                    ActivityLog.objects.create(
-                        user=request.user,
-                        action=f"🎉 Buyurtma #{order.order_number} ishlab chiqarishni tugatdi!",
-                        details=f"Barcha bosqichlar bajarildi. Mahsulot tayyor."
-                    )
-            
             return Response({
                 "status": "success", 
                 "total_produced": step.produced_qty,
@@ -1223,6 +1220,9 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         machine.save()
             
         step.save()
+        
+        # Check for order completion
+        step.order.check_and_update_status()
 
         # Translate for Logging
         status_map = {
