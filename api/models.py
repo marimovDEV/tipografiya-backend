@@ -916,6 +916,17 @@ class ProductionStep(models.Model):
         
         return round(time_minutes, 2)
 
+    def save(self, *args, **kwargs):
+        # Ensure quantities are non-negative
+        if self.produced_qty is not None:
+            self.produced_qty = max(0, self.produced_qty)
+        if self.defect_qty is not None:
+            self.defect_qty = max(0, self.defect_qty)
+        if self.input_qty is not None:
+            self.input_qty = max(0, self.input_qty)
+            
+        super().save(*args, **kwargs)
+
 class Invoice(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='invoices')
     invoice_number = models.CharField(max_length=50, unique=True, editable=False)

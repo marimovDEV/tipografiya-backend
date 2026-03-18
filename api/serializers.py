@@ -285,10 +285,10 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
     def get_completed_quantity(self, obj):
-        # Return produced_qty of the furthest stage that has production recorded
+        # Return produced_qty of the furthest stage as an integer (dona)
         last_step = obj.production_steps.filter(produced_qty__gt=0).order_by('-sequence').first()
         if last_step:
-            return last_step.produced_qty
+            return int(round(last_step.produced_qty))
         return 0
 
     def get_overall_progress(self, obj):
@@ -304,9 +304,13 @@ class OrderSerializer(serializers.ModelSerializer):
                 input_q = s.input_qty or 0
                 produced = s.produced_qty or 0
                 if input_q > 0:
-                    total_progress += round((produced / input_q) * 100)
+                    # Cap individual step progress at 100%
+                    step_progress = (produced / input_q) * 100
+                    total_progress += min(100, round(step_progress))
                     
-        return round(total_progress / len(steps))
+        # Ensure final average is also an integer and capped at 100
+        avg_progress = total_progress / len(steps)
+        return int(min(100, round(avg_progress)))
 
     def validate(self, data):
         """

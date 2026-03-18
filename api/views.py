@@ -2041,7 +2041,8 @@ class DashboardView(APIView):
         
         # Efficiency % (Today)
         total_attempted = today_produced_qty + today_defect_qty
-        today_efficiency = round((today_produced_qty / total_attempted * 100), 1) if total_attempted > 0 else 0
+        raw_efficiency = (today_produced_qty / total_attempted * 100) if total_attempted > 0 else 0
+        today_efficiency = round(min(100.0, float(raw_efficiency)), 1)
 
         # Delayed Orders
         delayed_orders_count = Order.objects.filter(deadline__lt=timezone.now(), status__in=['pending', 'in_production']).count()
