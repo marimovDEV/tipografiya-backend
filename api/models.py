@@ -529,7 +529,8 @@ class Order(models.Model):
         help_text="Masalan: 62x94 varaqda 8 ta (2x4)"
     )
     deadline = models.DateTimeField(blank=True, null=True)
-    completed_at = models.DateTimeField(blank=True, null=True, help_text="Buyurtma yakunlangan sana")
+    completed_at = models.DateTimeField(blank=True, null=True, help_text="Ishlab chiqarish yakunlangan sana")
+    delivered_at = models.DateTimeField(blank=True, null=True, help_text="Mijozga topshirilgan sana")
     
     
     # Pricing & Calculation

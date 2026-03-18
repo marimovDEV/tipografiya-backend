@@ -772,6 +772,31 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response({"status": order.status, "label": status_labels.get(order.status)})
 
+    @action(detail=True, methods=['post'])
+    def handover(self, request, pk=None):
+        """Mark order as delivered to customer"""
+        order = self.get_object()
+        
+        # Only ready or completed production orders can be handed over
+        if order.status not in ['ready', 'completed', 'in_production']:
+            return Response({"error": "Buyurtma hali tayyor emas"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        order.status = 'delivered'
+        order.delivered_at = timezone.now()
+        order.save()
+
+        ActivityLog.objects.create(
+            user=request.user,
+            action=f"🤝 Buyurtma #{order.order_number} mijozga topshirildi!",
+            details=f"Topshirildi: {order.delivered_at.strftime('%d.%m.%Y %H:%M')}"
+        )
+
+        return Response({
+            "status": "delivered",
+            "delivered_at": order.delivered_at,
+            "message": "Buyurtma topshirildi"
+        })
+
 class ProductionTemplateViewSet(viewsets.ModelViewSet):
     queryset = ProductionTemplate.objects.all()
     serializer_class = ProductionTemplateSerializer
@@ -1019,10 +1044,25 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 next_step.input_qty = step.produced_qty
                 next_step.save()
 
+            # Check for order completion (All production steps done)
+            if not order.production_steps.exclude(status='completed').exists():
+                if order.status != 'ready':
+                    order.status = 'ready'
+                    order.completed_at = timezone.now()
+                    order.save()
+                    
+                    # Log order completion
+                    ActivityLog.objects.create(
+                        user=request.user,
+                        action=f"🎉 Buyurtma #{order.order_number} ishlab chiqarishni tugatdi!",
+                        details=f"Barcha bosqichlar bajarildi. Mahsulot tayyor."
+                    )
+            
             return Response({
                 "status": "success", 
                 "total_produced": step.produced_qty,
-                "total_defect": step.defect_qty
+                "total_defect": step.defect_qty,
+                "order_status": order.status
             })
         except ProductionStep.DoesNotExist:
             return Response({"error": "Vazifa topilmadi"}, status=404)
@@ -1051,6 +1091,22 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         if next_step:
             next_step.input_qty = step.produced_qty
             next_step.save()
+
+        # Check for order completion
+        order = step.order
+        order_ready = False
+        if not order.production_steps.exclude(status='completed').exists():
+            if order.status != 'ready':
+                order.status = 'ready'
+                order.completed_at = timezone.now()
+                order.save()
+                order_ready = True
+                
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action=f"🎉 Buyurtma #{order.order_number} tayyor holatga keldi!",
+                    details=f"Barcha ishlab chiqarish bosqichlari yakunlandi."
+                )
 
         ActivityLog.objects.create(
             user=request.user,
@@ -1329,9 +1385,9 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         order = step.order
         order_completed = False
         if not order.production_steps.exclude(status='completed').exists():
-            # If all production is done, order is 'completed' (Archive) as per user request
-            if order.status != 'completed':
-                order.status = 'completed'
+            # If all production is done, order is 'ready' (Waiting for handover)
+            if order.status not in ['ready', 'delivered', 'completed']:
+                order.status = 'ready'
                 from django.utils import timezone
                 order.completed_at = timezone.now()
                 order.save()
