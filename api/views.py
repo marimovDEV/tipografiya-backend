@@ -22,7 +22,8 @@ from .serializers import (
     ActivityLogSerializer, TransactionSerializer, PricingSettingsSerializer,
     SupplierSerializer, MaterialBatchSerializer, WarehouseLogSerializer, SettingsLogSerializer,
     EmployeeEfficiencySerializer, MachineSettingsSerializer, WasteMaterialSerializer, TaskSerializer,
-    AttendanceSerializer, ProductionTemplateSerializer, TemplateStageSerializer
+    AttendanceSerializer, ProductionTemplateSerializer, TemplateStageSerializer,
+    ProductionLogSerializer
 )
 from rest_framework.authtoken.models import Token
 
