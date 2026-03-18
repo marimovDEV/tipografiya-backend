@@ -270,6 +270,7 @@ class OrderSerializer(serializers.ModelSerializer):
     production_time_hours = serializers.SerializerMethodField()
     is_delayed = serializers.SerializerMethodField()
     overall_progress = serializers.SerializerMethodField()
+    completed_quantity = serializers.SerializerMethodField()
     
     class Meta:
         model = Order
