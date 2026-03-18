@@ -279,9 +279,16 @@ class OrderSerializer(serializers.ModelSerializer):
             'quantity', 'price_per_unit', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
             'cutting_type', 'print_type', 'template',
             'template_id', 'production_steps', 'production_time_hours', 'is_delayed',
-            'overall_progress', 'book_name', 'page_count', 'cover_type',
+            'overall_progress', 'completed_quantity', 'book_name', 'page_count', 'cover_type',
             'binding_type', 'paper_weight', 'cover_weight', 'lamination', 'format'
         ]
+
+    def get_completed_quantity(self, obj):
+        # Return produced_qty of the furthest stage that has production recorded
+        last_step = obj.production_steps.filter(produced_qty__gt=0).order_by('-sequence').first()
+        if last_step:
+            return last_step.produced_qty
+        return 0
 
     def get_overall_progress(self, obj):
         steps = obj.production_steps.all()

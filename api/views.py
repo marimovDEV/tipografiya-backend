@@ -748,6 +748,20 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response({"status": "approved", "message": "Order moved to production"})
 
     @action(detail=True, methods=['post'])
+    def finish(self, request, pk=None):
+        """Manually mark order as ready for handover"""
+        order = self.get_object()
+        order.status = 'ready'
+        order.save()
+        
+        ActivityLog.objects.create(
+            user=request.user,
+            action=f"🏁 Buyurtma #{order.order_number} qo'lda yakunlandi (Tayyor)",
+            details=f"Admin tomonidan 'Tugatish' bosildi."
+        )
+        return Response({"status": "ready", "message": "Buyurtma tayyor holatga o'tkazildi"})
+
+    @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
         order = self.get_object()
         new_status = request.data.get('status')
