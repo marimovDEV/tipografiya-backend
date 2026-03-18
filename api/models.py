@@ -2210,6 +2210,8 @@ class ProductionLog(models.Model):
     )
     produced_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
     defect_qty = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    produced_pages = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    defect_pages = models.DecimalField(max_digits=12, decimal_places=4, default=0)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

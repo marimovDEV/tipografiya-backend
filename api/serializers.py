@@ -180,7 +180,7 @@ class ProductionLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductionLog
-        fields = ['id', 'worker', 'worker_name', 'produced_qty', 'defect_qty', 'notes', 'created_at']
+        fields = ['id', 'worker', 'worker_name', 'produced_qty', 'defect_qty', 'produced_pages', 'defect_pages', 'notes', 'created_at']
 
 class ProductionStepSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.SerializerMethodField()

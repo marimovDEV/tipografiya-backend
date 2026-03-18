@@ -1060,6 +1060,8 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 worker=request.user,
                 produced_qty=new_produced,
                 defect_qty=new_defect,
+                produced_pages=Decimal(str(produced_pages)) if produced_pages is not None else 0,
+                defect_pages=Decimal(str(defect_pages)) if defect_pages is not None else 0,
                 notes=notes
             )
 
