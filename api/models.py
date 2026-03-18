@@ -36,15 +36,8 @@ class User(AbstractUser):
     ROLE_CHOICES = (
         ('admin', 'Admin'),
         ('worker', 'Worker (Ishchi)'),
-        ('project_manager', 'Project Manager'),
-        ('warehouse', 'Warehouse'),
-        ('cutter', 'Cutter'),
-        ('printer', 'Printer'),
-        ('finishing', 'Finishing'),
-        ('qc', 'QC'),
-        ('accountant', 'Accountant'),
     )
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='project_manager')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='worker')
     avatar_url = models.URLField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
     telegram_id = models.CharField(max_length=50, blank=True, null=True)
