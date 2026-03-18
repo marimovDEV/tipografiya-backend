@@ -1,9 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (
     UserViewSet, ClientViewSet, MaterialViewSet,
     ProductViewSet, OrderViewSet, ProductionStepViewSet, InvoiceViewSet,
-    ProductionTemplateViewSet, TemplateStageViewSet
+    ProductionTemplateViewSet, TemplateStageViewSet, ProductionLogViewSet
 )
 from .optimizer_views import (
     OptimizationView, DownloadDXFView, DielinePreviewView
@@ -65,6 +64,7 @@ router.register(r'orders', OrderViewSet)
 router.register(r'production', ProductionStepViewSet, basename='production')
 router.register(r'production-templates', ProductionTemplateViewSet, basename='production-templates')
 router.register(r'template-stages', TemplateStageViewSet, basename='template-stages')
+router.register(r'production-logs', ProductionLogViewSet, basename='production-logs')
 router.register(r'invoices', InvoiceViewSet)
 router.register(r'transactions', TransactionViewSet)
 router.register(r'suppliers', SupplierViewSet)

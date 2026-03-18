@@ -2334,3 +2334,34 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if attendance:
             return Response(AttendanceSerializer(attendance).data)
         return Response(None, status=status.HTTP_204_NO_CONTENT)
+
+class ProductionLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ProductionLog.objects.all().order_by('-created_at')
+    serializer_class = ProductionLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['worker', 'production_step__order']
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Returns aggregated performance stats per worker"""
+        from django.db.models import Sum, Count, F
+        from django.utils import timezone
+        
+        days = int(request.query_params.get('days', 30))
+        start_date = timezone.now() - timezone.timedelta(days=days)
+        
+        logs = ProductionLog.objects.filter(created_at__gte=start_date)
+        
+        worker_stats = logs.values(
+            'worker__username', 
+            'worker__first_name', 
+            'worker__last_name'
+        ).annotate(
+            total_produced=Sum('produced_qty'),
+            total_defects=Sum('defect_qty'),
+            total_pages=Sum('produced_pages'),
+            defect_pages=Sum('defect_pages'),
+            log_count=Count('id')
+        ).order_by('-total_pages')
+        
+        return Response(worker_stats)
