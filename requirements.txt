@@ -50,3 +50,4 @@ uritemplate==4.2.0
 urllib3==2.6.3
 whitenoise==6.6.0
 yarl==1.23.0
+django-jazmin==2.6.1
