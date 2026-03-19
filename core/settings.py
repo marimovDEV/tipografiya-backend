@@ -19,7 +19,7 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '84.54.28.96,tapi.pizzacentergar
 # Application definition
 
 INSTALLED_APPS = [
-    'jazmin',
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -148,8 +148,8 @@ SPECTACULAR_SETTINGS = {
 # Telegram Bot
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 
-# Jazmin Settings
-JAZMIN_SETTINGS = {
+# Jazzmin Settings
+JAZZMIN_SETTINGS = {
     "site_title": "PrintERP Admin",
     "site_header": "PrintERP",
     "site_brand": "PrintERP Boshqaruv",
@@ -177,7 +177,7 @@ JAZMIN_SETTINGS = {
     "dark_mode_theme": "darkly",
 }
 
-JAZMIN_UI_TWEAKS = {
+JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,
