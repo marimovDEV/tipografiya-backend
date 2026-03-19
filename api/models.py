@@ -210,8 +210,12 @@ class Client(models.Model):
         return total_paid - total_orders
     
     @property
+    def balance(self):
+        return self.calculate_balance()
+    
+    @property
     def current_debt(self):
-        balance = self.calculate_balance()
+        balance = self.balance
         return abs(balance) if balance < 0 else 0
 
     def __str__(self):
