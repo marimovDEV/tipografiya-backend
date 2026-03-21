@@ -315,6 +315,34 @@ class TransactionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(client_id=client_id)
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        allowed_roles = ['admin', 'accountant', 'cashier']
+        if not hasattr(request.user, 'role') or request.user.role not in allowed_roles:
+            return Response(
+                {"error": "Transaction qo'shish uchun huquqingiz yo'q (Faqat kassir, buxgalter yoki admin)."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not hasattr(request.user, 'role') or request.user.role != 'admin':
+            return Response(
+                {"error": "Transactionni tahrirlash qat'iyan man etiladi. Agar xatoga yo'l qo'yilsa, uni bekor qiling (Correction). Ushbu amal faqat Adminga ruxsat etilgan."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not hasattr(request.user, 'role') or request.user.role != 'admin':
+            return Response(
+                {"error": "Transactionni to'liq o'chirish xavfsizlik sababli taqiqlangan! Xatoni tuzatish uchun bekor qiling (Correction) yoki Adminga murojaat qiling."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
+
 class MaterialViewSet(viewsets.ModelViewSet):
     queryset = Material.objects.all().order_by('name')
     serializer_class = MaterialSerializer
