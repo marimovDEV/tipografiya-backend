@@ -8,12 +8,10 @@ import uuid
 class BaseModel(models.Model):
     """
     Abstract base model for all models with enterprise features:
-    - UUID primary key
     - Audit fields (created_at, updated_at, created_by, updated_by)
     - Soft delete
     - Optimistic locking (version)
     """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
     # Note: created_by and updated_by will be added after User model
