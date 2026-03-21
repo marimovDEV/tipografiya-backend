@@ -29,12 +29,13 @@ class SchedulingService:
         machine_availability = {}
         
         for step_type in defined_sequence:
-            # Get total pending hours for this machine
-            pending_hours = ProductionStep.objects.filter(
+            # Get total pending minutes for this machine
+            pending_minutes = ProductionStep.objects.filter(
                 step=step_type,
-                status__in=['pending', 'in_progress'],
-                is_deleted=False
-            ).aggregate(total=Sum('estimated_hours'))['total'] or 0
+                status__in=['pending', 'in_progress']
+            ).aggregate(total=Sum('estimated_time_minutes'))['total'] or 0
+            
+            pending_hours = float(pending_minutes) / 60.0
             
             # Machine is free after pending work is done
             # Convert pending hours to "business days" duration? 
