@@ -1051,6 +1051,20 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
 
             # Auto-transition to in_progress if currently pending
             if step.status == 'pending':
+                # --- WAREHOUSE VALIDATION FIRST ---
+                is_first_step = not step.order.production_steps.filter(status='completed').exclude(id=step.id).exists()
+                if is_first_step:
+                    try:
+                        from .inventory_service import InventoryService, InventoryException
+                        InventoryService.validate_and_deduct_order_materials(step.order, request.user)
+                        
+                        if step.order.status == 'approved':
+                            step.order.status = 'in_production'
+                            step.order.save(update_fields=['status'])
+                    except InventoryException as e:
+                        return Response({"error": str(e)}, status=400)
+                # ----------------------------------
+                
                 step.status = 'in_progress'
                 if not step.started_at:
                     step.started_at = timezone.now()
