@@ -7,7 +7,7 @@ from .models import (
     EmployeeEfficiency, MachineSettings,
     SystemLock, Calendar, Shift, Reservation, OrderGeometry,
     WasteMaterial, MonthlyPlan, Task, Attendance,
-    ProductionTemplate, TemplateStage, ProductionLog
+    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion
 )
 
 class OrderGeometrySerializer(serializers.ModelSerializer):
@@ -487,4 +487,17 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Attendance
+        fields = '__all__'
+
+class UnitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Unit
+        fields = '__all__'
+
+class UnitConversionSerializer(serializers.ModelSerializer):
+    from_unit_name = serializers.ReadOnlyField(source='from_unit.name')
+    to_unit_name = serializers.ReadOnlyField(source='to_unit.name')
+
+    class Meta:
+        model = UnitConversion
         fields = '__all__'

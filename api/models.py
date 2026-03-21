@@ -155,7 +155,7 @@ class PricingSettings(models.Model):
     def __str__(self):
         return "Global Pricing Settings"
 
-class Client(models.Model):
+class Client(BaseModel):
     STATUS_CHOICES = (
         ('new', 'Yangi'),
         ('regular', 'Doimiy'),
@@ -181,9 +181,8 @@ class Client(models.Model):
     pricing_profile = models.CharField(max_length=20, choices=PRICING_PROFILE_CHOICES, default='Standard')
     
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_clients')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
+    # created_at, updated_at, is_deleted now from BaseModel
+
     # Financials
     credit_limit = models.DecimalField(
         max_digits=20, 
@@ -203,7 +202,7 @@ class Client(models.Model):
         )['total'] or 0
         
         # Sum of all approved/completed orders (Total Price)
-        total_orders = self.orders.exclude(status='canceled').aggregate(
+        total_orders = self.orders.filter(is_deleted=False).exclude(status='canceled').aggregate(
             total=models.Sum('total_price')
         )['total'] or 0
         
@@ -220,6 +219,30 @@ class Client(models.Model):
 
     def __str__(self):
         return self.full_name
+
+
+class Unit(models.Model):
+    """
+    Measurement units: dona, kg, pachka, yashik
+    """
+    name = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=20, unique=True) # e.g., 'pcs', 'kg', 'box'
+    is_base = models.BooleanField(default=False, help_text="Is this a base unit like 'dona' or 'kg'?")
+
+    def __str__(self):
+        return self.name
+
+
+class UnitConversion(models.Model):
+    """
+    Conversion logic: 1 yashik = 2500 dona
+    """
+    from_unit = models.ForeignKey(Unit, on_delete=models.CASCADE, related_name='conversions_from')
+    to_unit = models.ForeignKey(Unit, on_delete=models.CASCADE, related_name='conversions_to')
+    multiplier = models.DecimalField(max_digits=12, decimal_places=4)
+
+    def __str__(self):
+        return f"1 {self.from_unit.name} = {self.multiplier} {self.to_unit.name}"
 
 # ... (Material, Product, Order classes skipped/unchanged) ...
 
@@ -266,11 +289,11 @@ class Supplier(models.Model):
     def __str__(self):
         return self.name
 
-class Material(models.Model):
+class Material(BaseModel):
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=50, unique=True, null=True, blank=True)
     category = models.CharField(max_length=100, blank=True, null=True) # qogoz, siyoh, lak, adhesive, etc.
-    unit = models.CharField(max_length=20, blank=True, null=True) # kg, dona, list
+    unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True) 
     current_stock = models.DecimalField(max_digits=20, decimal_places=2, default=0)
     min_stock = models.DecimalField(max_digits=20, decimal_places=2, default=10)
     
@@ -278,7 +301,7 @@ class Material(models.Model):
     thickness_mm = models.FloatField(default=0, help_text="Material qalinligi (mm)")
     weight_gsm = models.IntegerField(default=0, help_text="Og'irligi (g/m2)")
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    # created_at, updated_at, is_deleted from BaseModel
 
     def __str__(self):
         return self.name
@@ -434,7 +457,7 @@ class TemplateStage(models.Model):
     def __str__(self):
         return f"{self.template.name} - {self.sequence}: {self.stage_name}"
 
-class Order(models.Model):
+class Order(BaseModel):
     PRIORITY_CHOICES = (
         ('normal', 'Normal'),
         ('high', 'High'),
@@ -599,6 +622,20 @@ class Order(models.Model):
                 self.payment_status = 'unpaid'
 
         super().save(*args, **kwargs)
+
+        # Create Transaction for Advance Payment if new order
+        if is_new and self.advance_payment > 0:
+            # Idempotency check: don't double create if somehow called twice
+            if not Transaction.objects.filter(order_link=self, type='income', category='Order Advance').exists():
+                Transaction.objects.create(
+                    type='income',
+                    amount=self.advance_payment,
+                    category='Order Advance',
+                    description=f"Advance payment for Order {self.order_number}",
+                    client=self.client,
+                    payment_method=self.initial_payment_method,
+                    order_link=self
+                )
 
     def check_and_update_status(self):
         """

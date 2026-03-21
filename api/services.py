@@ -515,3 +515,46 @@ class ProductionAssignmentService:
                 previous_step = step
             
         return # Done
+
+from decimal import Decimal
+from .models import Unit, UnitConversion
+
+class UnitService:
+    @staticmethod
+    def convert(amount, from_unit_code, to_unit_code):
+        """
+        Converts amount from one unit to another using defined UnitConversion rules.
+        """
+        if from_unit_code == to_unit_code:
+            return Decimal(str(amount))
+            
+        try:
+            conversion = UnitConversion.objects.get(
+                from_unit__code=from_unit_code,
+                to_unit__code=to_unit_code
+            )
+            return Decimal(str(amount)) * conversion.multiplier
+        except UnitConversion.DoesNotExist:
+            raise ValueError(f"No conversion rule from {from_unit_code} to {to_unit_code}")
+
+    @staticmethod
+    def get_base_quantity(amount, unit_code):
+        """
+        Converts any unit to its base unit (e.g., 'dona' or 'kg')
+        """
+        try:
+            unit = Unit.objects.get(code=unit_code)
+            if unit.is_base:
+                return Decimal(str(amount))
+            
+            conversion = UnitConversion.objects.filter(
+                from_unit=unit,
+                to_unit__is_base=True
+            ).first()
+            
+            if conversion:
+                return Decimal(str(amount)) * conversion.multiplier
+            
+            return Decimal(str(amount))
+        except Unit.DoesNotExist:
+            return Decimal(str(amount))

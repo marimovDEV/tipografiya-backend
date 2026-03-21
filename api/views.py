@@ -14,7 +14,7 @@ from .models import (
     ProductionStep, Invoice, Transaction, ActivityLog, PricingSettings,
     Supplier, MaterialBatch, WarehouseLog, SettingsLog,
     EmployeeEfficiency, MachineSettings, WasteMaterial, Task, Attendance,
-    ProductionTemplate, TemplateStage, ProductionLog
+    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion
 )
 from .serializers import (
     UserSerializer, ClientSerializer, MaterialSerializer, 
@@ -23,7 +23,7 @@ from .serializers import (
     SupplierSerializer, MaterialBatchSerializer, WarehouseLogSerializer, SettingsLogSerializer,
     EmployeeEfficiencySerializer, MachineSettingsSerializer, WasteMaterialSerializer, TaskSerializer,
     AttendanceSerializer, ProductionTemplateSerializer, TemplateStageSerializer,
-    ProductionLogSerializer
+    ProductionLogSerializer, UnitSerializer, UnitConversionSerializer
 )
 from rest_framework.authtoken.models import Token
 
@@ -429,6 +429,16 @@ class MaterialViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+class UnitViewSet(viewsets.ModelViewSet):
+    queryset = Unit.objects.all().order_by('name')
+    serializer_class = UnitSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class UnitConversionViewSet(viewsets.ModelViewSet):
+    queryset = UnitConversion.objects.all()
+    serializer_class = UnitConversionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
 class WasteMaterialViewSet(viewsets.ModelViewSet):
     queryset = WasteMaterial.objects.all().order_by('-date')
     serializer_class = WasteMaterialSerializer
@@ -598,6 +608,33 @@ class OrderViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def deliver(self, request, pk=None):
+        """
+        'Topshirish' (Deliver) action with strict validation.
+        Ensures order is 'ready' before it can be delivered.
+        """
+        order = self.get_object()
+        
+        if order.status != 'ready':
+            return Response({
+                "error": f"Buyurtma holati '{order.get_status_display()}'. Faqat 'Tayyor' buyurtmalarni topshirish mumkin."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        order.status = 'delivered'
+        from django.utils import timezone
+        order.delivered_at = timezone.now()
+        order.save()
+        
+        ActivityLog.objects.create(
+            user=request.user,
+            action=f"Buyurtma topshirildi: #{order.order_number}",
+            details=f"Mijoz: {order.client.full_name}"
+        )
+        
+        return Response(self.get_serializer(order).data)
         return Response(serializer.data)
 
 
@@ -863,25 +900,21 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return ProductionStep.objects.none()
             
-        # Base Query
+        # Base Query - respect soft delete on order
+        qs = ProductionStep.objects.filter(order__is_deleted=False)
+        
         if user.role == 'admin':
-            qs = ProductionStep.objects.all()
+            pass 
         elif getattr(self, 'detail', False) or self.action in ['claim', 'report_progress']:
-            # Allow workers to access specific steps for claiming/reporting
-            qs = ProductionStep.objects.all()
+            pass
         else:
-            # For workers, show tasks assigned to them OR unassigned tasks in the general pool
-            qs = ProductionStep.objects.filter(
-                Q(assigned_to=user) | Q(assigned_to__isnull=True)
-            )
-            # If user has specific skills, filter pool by those skills
+            qs = qs.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
             if hasattr(user, 'assigned_stages') and user.assigned_stages:
                 qs = qs.filter(step__in=user.assigned_stages)
             
         # Priority Logic
         from django.db.models import Case, When, Value, IntegerField
             
-        # Annotate & Sort: Urgent(1) < High(2) < Normal(3)
         qs = qs.annotate(
             priority_score=Case(
                 When(order__priority='urgent', then=Value(1)),
@@ -899,11 +932,11 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         """Returns pending tasks ready to start (assigned or in pool)"""
         user = request.user
         
-        # Base filter: Assigned to current user OR Unassigned
+        # Base filter: Assigned to current user OR Unassigned, Order not deleted
         qs = ProductionStep.objects.filter(
-            Q(assigned_to=user) | Q(assigned_to__isnull=True),
+            order__is_deleted=False,
             status='pending'
-        )
+        ).filter(Q(assigned_to=user) | Q(assigned_to__isnull=True))
         
         # Filter by skills if they are set
         if hasattr(user, 'assigned_stages') and user.assigned_stages:
@@ -936,11 +969,9 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
         user = request.user
         step = self.get_object()
         
-        if ProductionStep.objects.filter(assigned_to=user, status='in_progress').exists():
-            return Response(
-                {"error": "Sizda allaqachon faol vazifa bor. Yangisini boshlashdan oldin uni yakunlang."}, 
-                status=400
-            )
+        # Removed: Restriction that worker can only have one active task
+        # Workers can now contribute to multiple tasks in parallel (Flow model)
+
 
         # Allow if already assigned to current user OR unassigned pool
         if step.assigned_to and step.assigned_to != user and user.role != 'admin':
@@ -1018,6 +1049,17 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
             new_produced = max(Decimal('0'), new_produced)
             new_defect = max(Decimal('0'), new_defect)
 
+            # Auto-transition to in_progress if currently pending
+            if step.status == 'pending':
+                step.status = 'in_progress'
+                if not step.started_at:
+                    step.started_at = timezone.now()
+                
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action=f"Flow-started task: {step.get_step_display()} for Order #{step.order.order_number}"
+                )
+
             # Cumulative logic
             step.produced_qty += new_produced
             step.defect_qty += new_defect
@@ -1030,13 +1072,13 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 pass
             elif step.sequence > 1:
                 prev_step = ProductionStep.objects.filter(order=step.order, sequence=step.sequence - 1).first()
-                if prev_step and total_active > prev_step.produced_qty:
+                if prev_step and total_active > prev_step.produced_qty + Decimal('0.5'): # Allow minor buffer
                      return Response({
                         "error": f"Xatolik: Oldingi bosqichda faqat {float(prev_step.produced_qty):.2f} ta mahsulot tayyorlangan. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
             else:
                 # For first step, use order quantity as limit
-                if total_active > step.order.quantity:
+                if total_active > step.order.quantity + Decimal('0.5'): # Buffer for precision
                     return Response({
                         "error": f"Xatolik: Buyurtma miqdori {step.order.quantity} ta. Undan ko'pini kiritib bo'lmaydi."
                     }, status=400)
@@ -1304,28 +1346,28 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         current_quantity__gt=0
                     ).order_by('received_date')
                     
-                    remaining = Decimal(str(amount_needed))
+                    from django.db.models import F
                     for batch in batches:
                         if remaining <= 0: break
                         
-                        # Use Decimal for all math
                         qty_in_batch = Decimal(str(batch.current_quantity))
                         deduct = min(qty_in_batch, remaining)
                         
-                        batch.current_quantity = qty_in_batch - deduct
+                        # Atomic update to prevent race conditions
+                        batch.current_quantity = F('current_quantity') - deduct
                         remaining -= deduct
                         
-                        # Calculate cost for this portion
-                        # Calculate cost for this portion
                         batch_cost = deduct * Decimal(str(batch.cost_per_unit))
                         actual_cost += batch_cost
                         deducted_total += deduct
                         
+                        batch.save()
+                        # Refresh to check if we should deactivate
+                        batch.refresh_from_db()
                         if batch.current_quantity <= 0:
                             batch.is_active = False
-                        batch.save()
+                            batch.save(update_fields=['is_active'])
                         
-                        # Create WarehouseLog
                         WarehouseLog.objects.create(
                             material=material_obj,
                             material_batch=batch,
@@ -1337,8 +1379,8 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                         )
                         logs.append(f"{material_obj.name} (Batch: {batch.batch_number}): -{deduct}")
                     
-                    # Update global stock
-                    material_obj.current_stock -= deducted_total
+                    # Update global stock atomically
+                    material_obj.current_stock = F('current_stock') - deducted_total
                     material_obj.save()
                     
                     return actual_cost, logs
