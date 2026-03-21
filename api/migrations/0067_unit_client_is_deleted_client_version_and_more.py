@@ -4,6 +4,26 @@ import django.db.models.deletion
 import uuid
 from django.db import migrations, models
 
+def create_units_and_map(apps, schema_editor):
+    Material = apps.get_model('api', 'Material')
+    Unit = apps.get_model('api', 'Unit')
+    
+    # Find all unique string units currently in Material
+    for mat in Material.objects.all():
+        old_unit = getattr(mat, 'unit', None)
+        if old_unit and isinstance(old_unit, str) and old_unit.strip() and not old_unit.isdigit():
+            # It's a string like "pcs" or "kg"
+            unit_name = old_unit.strip()
+            unit_obj, created = Unit.objects.get_or_create(
+                name=unit_name,
+                defaults={'code': unit_name[:20].lower().replace(' ', '_'), 'is_base': True}
+            )
+            # Store the integer ID back as a string so SQLite has the correct foreign key reference
+            mat.unit = str(unit_obj.id)
+            mat.save(update_fields=['unit'])
+        elif old_unit == "":
+            mat.unit = None
+            mat.save(update_fields=['unit'])
 
 class Migration(migrations.Migration):
 
@@ -86,6 +106,7 @@ class Migration(migrations.Migration):
             name='id',
             field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
         ),
+        migrations.RunPython(create_units_and_map, reverse_code=migrations.RunPython.noop),
         migrations.AlterField(
             model_name='material',
             name='unit',
