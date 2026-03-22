@@ -254,8 +254,15 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.is_active = False
-        instance.save()
+        # Use our BaseModel soft-delete logic
+        instance.delete()
+        
+        # Log the action
+        ActivityLog.objects.create(
+            user=request.user,
+            action=f"Mijoz o'chirildi: {instance.full_name}",
+            details=f"ID: {instance.id}"
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'])
