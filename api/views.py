@@ -275,6 +275,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         amount = request.data.get('amount')
         method = request.data.get('method', 'cash')
         description = request.data.get('description', '')
+        order_id = request.data.get('order_id') # New: Support linking to order
         
         # Using safe_float for robust numeric handling
         amount_decimal = Decimal(str(safe_float(amount)))
@@ -290,15 +291,34 @@ class ClientViewSet(viewsets.ModelViewSet):
              payment_category = 'Mijoz avansi'
 
         try:
+            order = None
+            if order_id:
+                order = Order.objects.filter(id=order_id, client=client).first()
+
             transaction = Transaction.objects.create(
                 type='income',
                 amount=amount_decimal,
                 category=payment_category,
                 client=client,
+                order_link=order, # Link the order
                 payment_method=method,
                 date=timezone.localdate(),
                 description=description or f"{client.full_name} tomonidan {payment_category.lower()}"
             )
+            
+            # If linked to an order, sync the order's fields too
+            if order:
+                # Re-calculate total paid for this order
+                total_paid = Transaction.objects.filter(
+                    order_link=order, 
+                    type='income'
+                ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
+                
+                order.advance_payment = total_paid
+                # Note: order.save() will now automatically update payment_status 
+                # because of the refactor I just did in models.py
+                order.save()
+
             return Response(TransactionSerializer(transaction).data)
         except Exception as e:
             return Response({"error": f"To'lovni saqlashda ichki xatolik: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

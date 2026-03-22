@@ -640,13 +640,8 @@ class Order(BaseModel):
             self.order_number = f"ORD-{date_str}-{new_num:03d}"
         
         # Automatic Payment Status Update
-        if self.total_price:
-            if self.advance_payment >= self.total_price:
-                self.payment_status = 'fully_paid'
-            elif self.advance_payment > 0:
-                self.payment_status = 'partially_paid'
-            else:
-                self.payment_status = 'unpaid'
+        # Rely on the dynamic calculated_payment_status instead of just advance_payment
+        self.payment_status = self.calculated_payment_status
 
         super().save(*args, **kwargs)
 
