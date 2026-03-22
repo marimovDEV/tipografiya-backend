@@ -154,6 +154,7 @@ class PricingSettings(models.Model):
         return "Global Pricing Settings"
 
 class Client(BaseModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     STATUS_CHOICES = (
         ('new', 'Yangi'),
         ('regular', 'Doimiy'),
@@ -462,6 +463,7 @@ class TemplateStage(models.Model):
         return f"{self.template.name} - {self.sequence}: {self.stage_name}"
 
 class Order(BaseModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     PRIORITY_CHOICES = (
         ('normal', 'Normal'),
         ('high', 'High'),
@@ -1663,6 +1665,7 @@ class ProductTemplate(BaseModel):
     Template for product types with layer configuration.
     Defines standard product types like medicine boxes, pizza boxes, etc.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     CATEGORY_CHOICES = (
         ('medicine_box_1layer', 'Dori qutilari (1 qatlam)'),
         ('pizza_box', 'Pizza qutilari'),
@@ -1735,6 +1738,7 @@ class ProductTemplateLayer(BaseModel):
     Layer configuration for product template.
     Each layer specifies material requirements and constraints.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     template = models.ForeignKey(ProductTemplate, on_delete=models.CASCADE, related_name='layers')
     layer_number = models.IntegerField(help_text="Qatlam raqami (1, 2, 3)")
     
@@ -1791,6 +1795,7 @@ class ProductTemplateRouting(BaseModel):
     Production routing/workflow for template.
     Defines the sequence of production steps required.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     template = models.ForeignKey(ProductTemplate, on_delete=models.CASCADE, related_name='routing_steps')
     sequence = models.IntegerField(help_text="Bosqich tartibi (1, 2, 3...)")
     stage_name = models.CharField(max_length=100) # Simplified name like 'Sklad'
@@ -1847,6 +1852,7 @@ class MaterialNormative(BaseModel):
     Normative consumption rates per product type.
     Defines how much material is needed per unit for different scenarios.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     MATERIAL_TYPE_CHOICES = (
         ('paper', 'Qogoz'),
         ('ink', 'Siyoh'),
@@ -1924,6 +1930,7 @@ class WorkerTimeLog(BaseModel):
     Detailed time tracking for workers.
     Tracks START, PAUSE, RESUME, FINISH actions for accurate labor cost calculation.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ACTION_CHOICES = (
         ('start', 'START'),
         ('pause', 'PAUSE'),
@@ -1990,6 +1997,7 @@ class QCCheckpoint(BaseModel):
     Quality Control Checkpoint for production steps.
     Implements Pass/Fail workflow with automatic rework triggering.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     CHECKPOINT_TYPE_CHOICES = (
         ('visual', 'Vizual tekshiruv'),
         ('measurement', "O'lcham tekshiruvi"),
@@ -2164,6 +2172,7 @@ class ParametricProductProfile(BaseModel):
     Extends ProductTemplate with physics, geometry, and waste logic.
     Used for Auto-CAD generation and precise cost engineering.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     template = models.OneToOneField(
         'ProductTemplate',
         on_delete=models.CASCADE,
