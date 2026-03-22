@@ -1360,9 +1360,9 @@ class ProductionStepViewSet(viewsets.ModelViewSet):
                 if ready_steps:
                     count = len(ready_steps)
                     try:
-                        total_available = sum(s.available_qty for s in ready_steps)
+                        total_available = float(sum(s.available_qty for s in ready_steps))
                     except Exception:
-                        total_available = 0
+                        total_available = 0.0
                         
                     stats_data[step_code] = {
                         "display": step_display,
@@ -2559,4 +2559,27 @@ class ProductionLogViewSet(viewsets.ReadOnlyModelViewSet):
             log_count=Count('id')
         ).order_by('-total_pages')
         
-        return Response(worker_stats)
+        # Format for frontend: ensure numbers and add calculated fields
+        results = []
+        for item in worker_stats:
+            produced = float(item['total_produced'] or 0)
+            defects = float(item['total_defects'] or 0)
+            pages = int(item['total_pages'] or 0)
+            d_pages = int(item['defect_pages'] or 0)
+            
+            total_qty = produced + defects
+            error_rate = (defects / total_qty * 100) if total_qty > 0 else 0
+            
+            results.append({
+                "worker_username": item['worker__username'],
+                "worker_full_name": f"{item['worker__first_name'] or ''} {item['worker__last_name'] or ''}".strip() or item['worker__username'],
+                "total_produced": produced,
+                "total_defects": defects,
+                "total_pages": pages,
+                "defect_pages": d_pages,
+                "log_count": item['log_count'],
+                "error_rate": round(error_rate, 1),
+                "total_qty": total_qty
+            })
+        
+        return Response(results)
