@@ -391,6 +391,8 @@ class ActivityLogSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     client_name = serializers.ReadOnlyField(source='client.full_name')
     worker_name = serializers.ReadOnlyField(source='worker.get_full_name')
+    order_number = serializers.ReadOnlyField(source='order_link.order_number')
+    order_total_price = serializers.ReadOnlyField(source='order_link.total_price')
     
     class Meta:
         model = Transaction

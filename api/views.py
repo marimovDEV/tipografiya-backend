@@ -330,20 +330,30 @@ class TransactionViewSet(viewsets.ModelViewSet):
             amount = Decimal('0')
             
         t_type = data.get('type')
-        order_id = data.get('order_link')
+        # Support both 'order' and 'order_link' from frontend
+        order_id = data.get('order_link') or data.get('order')
+        client_id = data.get('client')
         
         # 1. Prevent duplicate transactions (double-click frontend bug)
-        if order_id and amount > 0:
+        if amount > 0:
             from django.utils import timezone
             from datetime import timedelta
-            recent_duplicate = Transaction.objects.filter(
-                order_link_id=order_id,
-                amount=amount,
-                type=t_type,
-                created_at__gte=timezone.now() - timedelta(seconds=10)
-            ).exists()
+            
+            # Use order or client + amount + type + time for unlinked transactions protection
+            duplicate_filter = {
+                'amount': amount,
+                'type': t_type,
+                'created_at__gte': timezone.now() - timedelta(seconds=15)
+            }
+            if order_id:
+                duplicate_filter['order_link_id'] = order_id
+            elif client_id:
+                duplicate_filter['client_id'] = client_id
+                
+            recent_duplicate = Transaction.objects.filter(**duplicate_filter).exists()
+            
             if recent_duplicate:
-                return Response({"error": "Buyruq 2 marta ketib qoldi shekilli. Xuddi shunday to'lov soniyalar ichida qabul qilingan!"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "Takroriy to'lov (Double-click)! Xuddi shunday tranzaksiya soniyalar ichida qabul qilingan."}, status=status.HTTP_400_BAD_REQUEST)
                 
         # 2. Overpayment validation
         if order_id and t_type == 'income':
@@ -355,11 +365,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     type='income'
                 ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
                 
-                if total_paid + amount > order.total_price:
-                    remaining = order.total_price - total_paid
+                if total_paid + amount > order.total_price + Decimal('100'): # 100 sum allowance for rounding
+                    remaining = max(0, order.total_price - total_paid)
                     return Response({
                         "error": f"To'lov summasi buyurtma narxidan oshib ketdi! Qarz: {remaining} so'm."
                     }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Map 'order' to 'order_link' in request.data if needed for serializer
+        if 'order' in data and 'order_link' not in data:
+            request.data['order_link'] = data['order']
 
         response = super().create(request, *args, **kwargs)
         
