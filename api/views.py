@@ -615,10 +615,28 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        """Override to auto-create production steps when order is created"""
+        """Override to auto-create production steps and initial transaction when order is created"""
         order = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
         
-        # 1. Auto-create production steps
+        # 1. Create Transaction for advance payment if any
+        # Proposed Architecture: Every bit of money MUST be in Transaction table.
+        if order.advance_payment > 0:
+            try:
+                from .models import Transaction
+                Transaction.objects.create(
+                    type='income',
+                    amount=order.advance_payment,
+                    category='Order Advance', # User suggested Category
+                    client=order.client,
+                    order_link=order,
+                    payment_method=order.initial_payment_method or 'cash',
+                    date=timezone.localdate(),
+                    description=f"Buyurtma #{order.order_number} uchun olingan avans"
+                )
+            except Exception as e:
+                print(f"Error creating transaction for advance payment: {e}")
+
+        # 2. Auto-create production steps
         try:
             template_id = self.request.data.get('product_template_id')
             if template_id:

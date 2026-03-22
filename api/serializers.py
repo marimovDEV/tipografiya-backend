@@ -271,12 +271,14 @@ class OrderSerializer(serializers.ModelSerializer):
     is_delayed = serializers.SerializerMethodField()
     overall_progress = serializers.SerializerMethodField()
     completed_quantity = serializers.SerializerMethodField()
+    total_paid = serializers.ReadOnlyField()
+    payment_status = serializers.ReadOnlyField(source='calculated_payment_status')
     
     class Meta:
         model = Order
         fields = [
             'id', 'order_number', 'client', 'client_id', 'total_price', 'total_cost', 'advance_payment',
-            'payment_status', 'status', 'deadline', 'completed_at', 'box_type',
+            'payment_status', 'total_paid', 'status', 'deadline', 'completed_at', 'box_type',
             'quantity', 'price_per_unit', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
             'cutting_type', 'print_type', 'template',
             'template_id', 'production_steps', 'production_time_hours', 'is_delayed',

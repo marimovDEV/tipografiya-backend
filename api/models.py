@@ -591,11 +591,34 @@ class Order(BaseModel):
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_orders')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.order_number} - {self.client.full_name}"
-    
-    class Meta:
-        ordering = ['-deadline']
+    @property
+    def total_paid(self):
+        """
+        Calculates total paid amount for this order from linked transactions.
+        """
+        # Sum of all income transactions linked to this order
+        total = self.order_transactions.filter(type='income').aggregate(
+            total=models.Sum('amount')
+        )['total'] or 0
+        return float(total)
+
+    @property
+    def calculated_payment_status(self):
+        """
+        Dynamically determine payment status based on total_paid vs total_price.
+        Following the proposed systemic architecture.
+        """
+        paid = self.total_paid
+        price = float(self.total_price or 0)
+        
+        if price <= 0:
+            return 'unpaid'
+        
+        if paid >= price:
+            return 'fully_paid'
+        elif paid > 0:
+            return 'partially_paid'
+        return 'unpaid'
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
