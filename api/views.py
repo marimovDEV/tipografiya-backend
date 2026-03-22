@@ -2657,8 +2657,7 @@ class SystemResetView(APIView):
                 for model in models_to_clear:
                     model.objects.all().delete()
                 
-                # Reset stocks to 0 for Material and Product
-                Material.objects.all().update(available_quantity=0)
+                # Reset stocks to 0 for Product
                 Product.objects.all().update(current_stock=0)
 
                 # Log this critical action
