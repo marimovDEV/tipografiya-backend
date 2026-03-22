@@ -292,9 +292,11 @@ class Material(BaseModel):
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=50, unique=True, null=True, blank=True)
     category = models.CharField(max_length=100, blank=True, null=True) # qogoz, siyoh, lak, adhesive, etc.
-    unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True) 
+    unit = models.CharField(max_length=20, default='kg')
+    units_per_pack = models.PositiveIntegerField(default=500, help_text="Number of units in one pack (pachka)")
+    packs_per_box = models.PositiveIntegerField(default=5, help_text="Number of packs in one box (yashik)")
     current_stock = models.DecimalField(max_digits=20, decimal_places=2, default=0)
-    min_stock = models.DecimalField(max_digits=20, decimal_places=2, default=10)
+    min_stock = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Phase 6: Material Properties
     thickness_mm = models.FloatField(default=0, help_text="Material qalinligi (mm)")
