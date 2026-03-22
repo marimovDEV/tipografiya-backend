@@ -15,7 +15,7 @@ from .models import (
     Supplier, MaterialBatch, WarehouseLog, SettingsLog,
     EmployeeEfficiency, MachineSettings, WasteMaterial, Task, Attendance,
     ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion,
-    OrderGeometry, Reservation, JournalEntry, JournalEntryLine,
+    OrderGeometry, Reservation,
     WorkerTimeLog, MonthlyPlan
 )
 from .serializers import (
