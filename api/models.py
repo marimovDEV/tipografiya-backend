@@ -317,7 +317,7 @@ class MaterialBatch(models.Model):
     batch_number = models.CharField(max_length=100, blank=True, null=True)
     initial_quantity = models.DecimalField(max_digits=20, decimal_places=2)
     current_quantity = models.DecimalField(max_digits=20, decimal_places=2)
-    received_date = models.DateField(auto_now_add=True)
+    received_date = models.DateTimeField(auto_now_add=True)
     expiry_date = models.DateField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     color = models.CharField(max_length=50, blank=True, null=True)  # For warehouse color selection
