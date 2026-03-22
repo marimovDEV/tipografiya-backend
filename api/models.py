@@ -1839,7 +1839,7 @@ class ProductTemplateRouting(BaseModel):
         unique_together = ['template', 'sequence']
     
     def __str__(self):
-        return f"{self.template.name} - {self.sequence}. {self.get_step_name_display()}"
+        return f"{self.template.name} - {self.sequence}. {self.stage_name}"
 
 
 class MaterialNormative(BaseModel):
