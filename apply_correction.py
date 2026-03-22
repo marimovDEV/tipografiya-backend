@@ -22,13 +22,17 @@ def fix_duplicates_and_overpayments():
     orphaned = Transaction.objects.filter(order_link__isnull=True, category='sales')
     linked_count = 0
     for t in orphaned:
-        if t.notes and "Buyurtma #" in t.notes:
-            order_num = t.notes.split('#')[1].split(' ')[0]
-            order = Order.objects.filter(order_number=order_num).first()
-            if order:
-                t.order_link = order
-                t.save(update_fields=['order_link'])
-                linked_count += 1
+        if t.description and "Buyurtma #" in t.description:
+            try:
+                # Extract order number from description like "Buyurtma #ORD-20260322-001 topshirish..."
+                order_num = t.description.split('#')[1].split(' ')[0]
+                order = Order.objects.filter(order_number=order_num).first()
+                if order:
+                    t.order_link = order
+                    t.save(update_fields=['order_link'])
+                    linked_count += 1
+            except:
+                continue
     if linked_count:
         print(f"Linked {linked_count} orphaned transactions to their orders based on notes.")
 
