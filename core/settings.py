@@ -117,7 +117,16 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+# Use simple storage in development, Whitenoise in production
+if DEBUG:
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+else:
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
@@ -154,13 +163,17 @@ JAZZMIN_SETTINGS = {
     "site_title": "PrintERP Admin",
     "site_header": "PrintERP",
     "site_brand": "PrintERP Boshqaruv",
-    "welcome_sign": "PrintERP tizimiga xush kelibsiz",
+    "site_logo": "img/logo.png",
+    "login_logo": "img/logo.png",
+    "welcome_sign": "PrintERP ish boshqaruv tizimiga xush kelibsiz",
     "copyright": "PrintERP Ltd",
     "search_model": ["api.User", "api.Order"],
     "user_avatar": "avatar_url",
     "topmenu_links": [
         {"name": "Bosh sahifa",  "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"model": "api.Order"},
+        {"name": "Buyurtmalar", "model": "api.Order"},
+        {"name": "Moliya", "model": "api.Transaction"},
+        {"name": "Ombor", "model": "api.Material"},
     ],
     "show_sidebar": True,
     "navigation_expanded": True,
@@ -172,10 +185,13 @@ JAZZMIN_SETTINGS = {
         "api.transaction": "fas fa-money-bill-wave",
         "api.material": "fas fa-boxes",
         "api.productiontemplate": "fas fa-file-invoice",
+        "api.productionstep": "fas fa-tasks",
+        "api.attendance": "fas fa-clock",
     },
     "order_with_respect_to": ["api", "auth"],
     "theme": "flatly",
     "dark_mode_theme": "darkly",
+    "show_ui_builder": True,
 }
 
 JAZZMIN_UI_TWEAKS = {
@@ -198,8 +214,8 @@ JAZZMIN_UI_TWEAKS = {
     "sidebar_nav_compact_style": False,
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": False,
-    "theme": "lumen",
-    "dark_mode_theme": None,
+    "theme": "flatly",
+    "dark_mode_theme": "darkly",
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-secondary",
