@@ -7,20 +7,25 @@ def create_units_and_map(apps, schema_editor):
     Material = apps.get_model('api', 'Material')
     Unit = apps.get_model('api', 'Unit')
     
-    # Find all unique string units currently in Material
     for mat in Material.objects.all():
-        old_unit = getattr(mat, 'unit', None)
-        if old_unit and isinstance(old_unit, str) and old_unit.strip() and not old_unit.isdigit():
-            # It's a string like "pcs" or "kg"
-            unit_name = old_unit.strip()
+        old_val = getattr(mat, 'old_unit', None)
+        if old_val and isinstance(old_val, str) and old_val.strip() and not old_val.isdigit():
+            unit_name = old_val.strip()
             unit_obj, created = Unit.objects.get_or_create(
                 name=unit_name,
                 defaults={'code': unit_name[:20].lower().replace(' ', '_'), 'is_base': True}
             )
-            # Store the integer ID back as a string so SQLite has the correct foreign key reference
-            mat.unit = str(unit_obj.id)
+            mat.unit = unit_obj
             mat.save(update_fields=['unit'])
-        elif old_unit == "":
+        elif old_val and str(old_val).isdigit():
+            try:
+                unit_obj = Unit.objects.get(id=int(old_val))
+                mat.unit = unit_obj
+                mat.save(update_fields=['unit'])
+            except Unit.DoesNotExist:
+                mat.unit = None
+                mat.save(update_fields=['unit'])
+        else:
             mat.unit = None
             mat.save(update_fields=['unit'])
 
@@ -126,11 +131,20 @@ class Migration(migrations.Migration):
             name='id',
             field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
         ),
-        migrations.RunPython(create_units_and_map, reverse_code=migrations.RunPython.noop),
-        migrations.AlterField(
+        migrations.RenameField(
+            model_name='material',
+            old_name='unit',
+            new_name='old_unit',
+        ),
+        migrations.AddField(
             model_name='material',
             name='unit',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='api.unit'),
+        ),
+        migrations.RunPython(create_units_and_map, reverse_code=migrations.RunPython.noop),
+        migrations.RemoveField(
+            model_name='material',
+            name='old_unit',
         ),
         migrations.CreateModel(
             name='UnitConversion',
