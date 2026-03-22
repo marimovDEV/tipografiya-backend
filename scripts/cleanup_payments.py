@@ -39,7 +39,7 @@ def cleanup_duplicate_payments():
         to_delete = qs.exclude(id=first_id)
         count = to_delete.count()
         
-        print(f"Buyurtma {d['order_link']} uchun {count} ta dublikat o'chirilmoqda...")
+        print(f"Client {d['client']} uchun {count} ta dublikat o'chirilmoqda...")
         to_delete.delete()
         total_deleted += count
         
