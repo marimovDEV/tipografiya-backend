@@ -322,7 +322,69 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 {"error": "Transaction qo'shish uchun huquqingiz yo'q (Faqat kassir, buxgalter yoki admin)."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        return super().create(request, *args, **kwargs)
+            
+        data = request.data
+        try:
+            amount = Decimal(str(data.get('amount', 0)))
+        except:
+            amount = Decimal('0')
+            
+        t_type = data.get('type')
+        order_id = data.get('order_link')
+        
+        # 1. Prevent duplicate transactions (double-click frontend bug)
+        if order_id and amount > 0:
+            from django.utils import timezone
+            from datetime import timedelta
+            recent_duplicate = Transaction.objects.filter(
+                order_link_id=order_id,
+                amount=amount,
+                type=t_type,
+                created_at__gte=timezone.now() - timedelta(seconds=10)
+            ).exists()
+            if recent_duplicate:
+                return Response({"error": "Buyruq 2 marta ketib qoldi shekilli. Xuddi shunday to'lov soniyalar ichida qabul qilingan!"}, status=status.HTTP_400_BAD_REQUEST)
+                
+        # 2. Overpayment validation
+        if order_id and t_type == 'income':
+            order = Order.objects.filter(id=order_id).first()
+            if order and order.total_price:
+                from django.db.models import Sum
+                total_paid = Transaction.objects.filter(
+                    order_link_id=order_id, 
+                    type='income'
+                ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
+                
+                if total_paid + amount > order.total_price:
+                    remaining = order.total_price - total_paid
+                    return Response({
+                        "error": f"To'lov summasi buyurtma narxidan oshib ketdi! Qarz: {remaining} so'm."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+        response = super().create(request, *args, **kwargs)
+        
+        # 3. Synchronize Order advance_payment
+        if response.status_code == 201 and order_id and t_type == 'income':
+            order = Order.objects.filter(id=order_id).first()
+            if order:
+                from django.db.models import Sum
+                total_paid = Transaction.objects.filter(
+                    order_link_id=order_id, 
+                    type='income'
+                ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
+                
+                order.advance_payment = total_paid
+                if order.total_price:
+                    if total_paid >= order.total_price:
+                        order.payment_status = 'fully_paid'
+                    elif total_paid > 0:
+                        order.payment_status = 'partially_paid'
+                    else:
+                        order.payment_status = 'unpaid'
+                
+                order.save(update_fields=['advance_payment', 'payment_status'])
+                
+        return response
 
     def update(self, request, *args, **kwargs):
         if not hasattr(request.user, 'role') or request.user.role != 'admin':
