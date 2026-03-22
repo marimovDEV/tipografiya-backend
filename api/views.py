@@ -1014,17 +1014,6 @@ class ProductionTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = ProductionTemplateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        template = serializer.save()
-        # Default stages requested by user
-        default_stages = ['sklad', 'cutting', 'printing', 'gluing', 'packaging', 'tayyor_sklad']
-        for idx, stage_code in enumerate(default_stages, start=1):
-            TemplateStage.objects.create(
-                template=template,
-                stage_name=stage_code,
-                sequence=idx
-            )
-
 class TemplateStageViewSet(viewsets.ModelViewSet):
     queryset = TemplateStage.objects.all().order_by('sequence')
     serializer_class = TemplateStageSerializer
