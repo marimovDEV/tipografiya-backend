@@ -15,8 +15,8 @@ from .models import (
     Supplier, MaterialBatch, WarehouseLog, SettingsLog,
     EmployeeEfficiency, MachineSettings, WasteMaterial, Task, Attendance,
     ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion,
-    DesignFile, OrderGeometry, Reservation, JournalEntry, JournalEntryLine,
-    ReworkLog, WorkerTimeLog, MonthlyPlan
+    OrderGeometry, Reservation, JournalEntry, JournalEntryLine,
+    WorkerTimeLog, MonthlyPlan
 )
 from .serializers import (
     UserSerializer, ClientSerializer, MaterialSerializer, 
@@ -2639,8 +2639,8 @@ class SystemResetView(APIView):
                     Transaction, Order, Client, WarehouseLog, MaterialBatch,
                     ProductionStep, ProductionLog, ActivityLog, Invoice,
                     WasteMaterial, Task, Attendance, MonthlyPlan, Reservation,
-                    JournalEntry, JournalEntryLine, DesignFile, OrderGeometry,
-                    SettingsLog, ReworkLog, WorkerTimeLog, ProductionLog
+                    JournalEntry, JournalEntryLine, OrderGeometry,
+                    SettingsLog, WorkerTimeLog, ProductionLog
                 ]
                 
                 for model in models_to_clear:
