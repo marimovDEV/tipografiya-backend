@@ -192,19 +192,22 @@ class Client(BaseModel):
     def calculate_balance(self):
         """
         Calculate client balance: Total Payments - Total Orders Cost
-        Returns negative value if client is in debt.
+        Returns negative value if client is in debt (proposed architecture).
         """
-        # Sum of all completed payments (Income transactions)
+        # Sum of all income transactions (Payments)
         total_paid = self.transactions.filter(type='income').aggregate(
             total=models.Sum('amount')
         )['total'] or 0
         
         # Sum of all approved/completed orders (Total Price)
+        # Note: canceled orders are excluded
         total_orders = self.orders.filter(is_deleted=False).exclude(status='canceled').aggregate(
             total=models.Sum('total_price')
         )['total'] or 0
         
-        return total_paid - total_orders
+        # Balance = Payments - Orders. 
+        # If -100,000, it means client owes 100,000 (debt).
+        return float(total_paid) - float(total_orders)
     
     @property
     def balance(self):
@@ -624,20 +627,6 @@ class Order(BaseModel):
 
         super().save(*args, **kwargs)
 
-        # Create Transaction for Advance Payment if new order
-        if is_new and self.advance_payment > 0:
-            # Idempotency check: don't double create if somehow called twice
-            if not Transaction.objects.filter(order_link=self, type='income', category='Order Advance').exists():
-                Transaction.objects.create(
-                    type='income',
-                    amount=self.advance_payment,
-                    category='Order Advance',
-                    description=f"Advance payment for Order {self.order_number}",
-                    client=self.client,
-                    payment_method=self.initial_payment_method,
-                    order_link=self
-                )
-
     def check_and_update_status(self):
         """
         Calculates if all production steps are completed and updates order status.
@@ -669,18 +658,6 @@ class Order(BaseModel):
                 self.save(update_fields=['status', 'completed_at'])
                 return True
         return False
-
-        # Create Transaction for Advance Payment if new order
-        if is_new and self.advance_payment > 0:
-            Transaction.objects.create(
-                type='income',
-                amount=self.advance_payment,
-                category='Order Advance',
-                description=f"Advance payment for Order {self.order_number}",
-                client=self.client,
-                payment_method=self.initial_payment_method,
-                order_link=self
-            )
 
 class DesignFile(models.Model):
     STATUS_CHOICES = (

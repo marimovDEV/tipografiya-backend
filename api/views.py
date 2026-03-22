@@ -26,6 +26,7 @@ from .serializers import (
     ProductionLogSerializer, UnitSerializer, UnitConversionSerializer
 )
 from rest_framework.authtoken.models import Token
+from .utils import safe_float, calculate_units
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -259,39 +260,37 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def add_payment(self, request, pk=None):
+        """
+        Manually add a payment for a client.
+        Proposed Architecture: 'Hech qachon Payment avtomatik yaratilmasin'
+        """
         client = self.get_object()
         amount = request.data.get('amount')
         method = request.data.get('method', 'cash')
         description = request.data.get('description', '')
         
-        if not amount:
-            return Response({"error": "Summa kiritilishi shart"}, status=status.HTTP_400_BAD_REQUEST)
+        # Using safe_float for robust numeric handling
+        amount_decimal = Decimal(str(safe_float(amount)))
         
-        # Check if payment exceeds debt
-        if client.balance >= 0:
-            return Response({"error": "Mijozning qarzi yo'q. To'lov qabul qilinmadi."}, status=status.HTTP_400_BAD_REQUEST)
+        if amount_decimal <= 0:
+            return Response({"error": "Summa noldan katta bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
         
-        try:
-            amount_decimal = Decimal(str(amount))
-            if amount_decimal <= 0:
-                return Response({"error": "Summa noldan katta bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Max possible payment is the debt amount
-            max_payment = abs(client.balance)
-            if amount_decimal > max_payment:
-                return Response({"error": f"To'lov qarzdan ({max_payment:,.0f} so'm) ko'p bo'lishi mumkin emas"}, status=status.HTTP_400_BAD_REQUEST)
-        except (InvalidOperation, ValueError, TypeError):
-            return Response({"error": "Noto'g'ri summa formati"}, status=status.HTTP_400_BAD_REQUEST)
-            
+        # Logic: All payments are allowed (Advance or Debt payment)
+        # Type is determined by current balance
+        current_balance = client.calculate_balance() # Dynamic balance calculation
+        payment_category = 'Mijoz to\'lovi'
+        if current_balance >= 0:
+             payment_category = 'Mijoz avansi'
+
         try:
             transaction = Transaction.objects.create(
                 type='income',
                 amount=amount_decimal,
-                category='Mijoz to\'lovi',
+                category=payment_category,
                 client=client,
                 payment_method=method,
                 date=timezone.localdate(),
-                description=description or f"{client.full_name} tomonidan to'lov"
+                description=description or f"{client.full_name} tomonidan {payment_category.lower()}"
             )
             return Response(TransactionSerializer(transaction).data)
         except Exception as e:
@@ -666,31 +665,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print(f"Error creating production steps: {e}")
 
-        # 2. Create Transaction for advance payment if any
-        if order.advance_payment > 0:
-            try:
-                from .models import Transaction
-                from django.utils import timezone
-                Transaction.objects.create(
-                    type='income',
-                    amount=order.advance_payment,
-                    category='Buyurtma to\'lovi',
-                    client=order.client,
-                    order_link=order,
-                    payment_method=order.initial_payment_method or 'cash',
-                    date=timezone.localdate(),
-                    description=f"Buyurtma #{order.order_number} uchun olingan avans"
-                )
-                
-                # Check if it was fully paid
-                if order.total_price and order.advance_payment >= order.total_price:
-                    order.payment_status = 'fully_paid'
-                elif order.advance_payment > 0:
-                    order.payment_status = 'partially_paid'
-                order.save(update_fields=['payment_status'])
-            except Exception as e:
-                print(f"Error creating transaction for advance payment: {e}")
-
         # Log activity
         ActivityLog.objects.create(
             user=self.request.user,
@@ -718,15 +692,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             total_cost=Sum('total_cost'),
         )
         
-        rev = float(stats_data['total_revenue'] or 0)
-        cost = float(stats_data['total_cost'] or 0)
+        rev = safe_float(stats_data['total_revenue'])
+        cost = safe_float(stats_data['total_cost'])
+        total_orders = int(stats_data['total_orders'] or 0)
         
         return Response({
-            "total_orders": stats_data['total_orders'],
+            "total_orders": total_orders,
             "total_revenue": rev,
             "total_cost": cost,
             "total_profit": rev - cost,
-            "avg_profit_per_order": (rev - cost) / stats_data['total_orders'] if stats_data['total_orders'] > 0 else 0
+            "avg_profit_per_order": (rev - cost) / total_orders if total_orders > 0 else 0
         })
     
     @action(detail=False, methods=['get'])
