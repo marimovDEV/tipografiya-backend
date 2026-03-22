@@ -13,14 +13,14 @@ from api.models import Transaction
 def cleanup_duplicate_payments():
     print("Duduplat to'lovlarni tozalash boshlandi...")
     
-    # Identify potential duplicates across order_link, client, amount, and category
+    # Identify potential duplicates across client, amount, category and date
+    # We remove the order_link requirement to catch more duplicates
     duplicates = Transaction.objects.values(
-        'order_link', 'client', 'amount', 'category'
+        'client', 'amount', 'category', 'date'
     ).annotate(
         count=Count('id')
     ).filter(
-        count__gt=1,
-        order_link__isnull=False # Only cleanup if linked to an order
+        count__gt=1
     )
     
     total_deleted = 0
@@ -28,10 +28,10 @@ def cleanup_duplicate_payments():
     for d in duplicates:
         # Find all records for this specific set of criteria
         qs = Transaction.objects.filter(
-            order_link=d['order_link'],
             client=d['client'],
             amount=d['amount'],
-            category=d['category']
+            category=d['category'],
+            date=d['date']
         ).order_by('created_at')
         
         # Keep the first one, delete the rest
