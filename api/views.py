@@ -619,7 +619,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Override to auto-create production steps when order is created"""
         order = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
         
-        # Auto-create production steps
+        # 1. Auto-create production steps
         try:
             template_id = self.request.data.get('product_template_id')
             if template_id:
@@ -665,12 +665,37 @@ class OrderViewSet(viewsets.ModelViewSet):
                     )
         except Exception as e:
             print(f"Error creating production steps: {e}")
-        
+
+        # 2. Create Transaction for advance payment if any
+        if order.advance_payment > 0:
+            try:
+                from .models import Transaction
+                from django.utils import timezone
+                Transaction.objects.create(
+                    type='income',
+                    amount=order.advance_payment,
+                    category='Buyurtma to\'lovi',
+                    client=order.client,
+                    order_link=order,
+                    payment_method=order.initial_payment_method or 'cash',
+                    date=timezone.localdate(),
+                    description=f"Buyurtma #{order.order_number} uchun olingan avans"
+                )
+                
+                # Check if it was fully paid
+                if order.total_price and order.advance_payment >= order.total_price:
+                    order.payment_status = 'fully_paid'
+                elif order.advance_payment > 0:
+                    order.payment_status = 'partially_paid'
+                order.save(update_fields=['payment_status'])
+            except Exception as e:
+                print(f"Error creating transaction for advance payment: {e}")
+
         # Log activity
         ActivityLog.objects.create(
             user=self.request.user,
             action=f"Yangi buyurtma yaratildi: #{order.order_number}",
-            details=f"Mijoz: {order.client.full_name if order.client else 'N/A'}"
+            details=f"Mijoz: {order.client.full_name if order.client else 'N/A'}, Avans: {order.advance_payment}"
         )
 
     @action(detail=False, methods=['get'])
