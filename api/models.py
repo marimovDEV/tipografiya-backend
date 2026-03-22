@@ -272,6 +272,7 @@ class Transaction(models.Model):
     
     date = models.DateField(default=timezone.now) # Allows backdating
     created_at = models.DateTimeField(auto_now_add=True)
+    idempotency_key = models.CharField(max_length=100, unique=True, null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']

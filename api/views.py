@@ -333,8 +333,17 @@ class TransactionViewSet(viewsets.ModelViewSet):
         # Support both 'order' and 'order_link' from frontend
         order_id = data.get('order_link') or data.get('order')
         client_id = data.get('client')
+        idempotency_key = data.get('idempotency_key')
         
-        # 1. Prevent duplicate transactions (double-click frontend bug)
+        # 1. NEW: Strict Idempotency Check
+        if idempotency_key:
+            existing = Transaction.objects.filter(idempotency_key=idempotency_key).first()
+            if existing:
+                # If it already exists, just return it (Idempotency standard)
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # 2. Prevent duplicate transactions (Fallback time-based check)
         if amount > 0:
             from django.utils import timezone
             from datetime import timedelta
