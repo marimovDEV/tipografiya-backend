@@ -245,7 +245,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Client.objects.filter(is_active=True).order_by('-created_at')
+        return Client.objects.filter(is_active=True, is_deleted=False).order_by('-created_at')
 
     def perform_create(self, serializer):
         user = self.request.user if self.request.user.is_authenticated else None
@@ -344,7 +344,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 class MaterialViewSet(viewsets.ModelViewSet):
-    queryset = Material.objects.all().order_by('name')
+    queryset = Material.objects.filter(is_deleted=False).order_by('name')
     serializer_class = MaterialSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -518,7 +518,7 @@ class WarehouseLogViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class OrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.all().order_by('-created_at')
+    queryset = Order.objects.filter(is_deleted=False).order_by('-created_at')
     filter_backends = [DjangoFilterBackend]
     filterset_fields = {
         'client': ['exact'],
