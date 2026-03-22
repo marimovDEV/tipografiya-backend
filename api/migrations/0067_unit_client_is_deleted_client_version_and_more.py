@@ -29,7 +29,6 @@ def create_units_and_map(apps, schema_editor):
             mat.unit = None
             mat.save(update_fields=['unit'])
 
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -85,51 +84,6 @@ class Migration(migrations.Migration):
             model_name='order',
             name='version',
             field=models.IntegerField(default=1, help_text='Optimistic locking version'),
-        ),
-        migrations.AlterField(
-            model_name='client',
-            name='created_at',
-            field=models.DateTimeField(auto_now_add=True, db_index=True),
-        ),
-        migrations.AlterField(
-            model_name='material',
-            name='created_at',
-            field=models.DateTimeField(auto_now_add=True, db_index=True),
-        ),
-        migrations.AlterField(
-            model_name='materialnormative',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='parametricproductprofile',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='producttemplate',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='producttemplatelayer',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='producttemplaterouting',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='qccheckpoint',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
-        ),
-        migrations.AlterField(
-            model_name='workertimelog',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
         ),
         migrations.RenameField(
             model_name='material',
