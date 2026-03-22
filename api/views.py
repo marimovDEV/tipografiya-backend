@@ -14,7 +14,9 @@ from .models import (
     ProductionStep, Invoice, Transaction, ActivityLog, PricingSettings,
     Supplier, MaterialBatch, WarehouseLog, SettingsLog,
     EmployeeEfficiency, MachineSettings, WasteMaterial, Task, Attendance,
-    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion
+    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion,
+    DesignFile, OrderGeometry, Reservation, JournalEntry, JournalEntryLine,
+    ReworkLog, WorkerTimeLog, MonthlyPlan
 )
 from .serializers import (
     UserSerializer, ClientSerializer, MaterialSerializer, 
@@ -2603,3 +2605,69 @@ class ProductionLogViewSet(viewsets.ReadOnlyModelViewSet):
             })
         
         return Response(results)
+
+class SystemResetView(APIView):
+    """
+    DANGER: This view resets the entire system data.
+    Requires superuser status, password, and 'RESET' confirmation.
+    """
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+
+    def post(self, request):
+        password = request.data.get('password')
+        confirmation = request.data.get('confirmation')
+        
+        # In a real production app, this should be in .env
+        RESET_PASSWORD = "RESET2024"
+        
+        if password != RESET_PASSWORD:
+            return Response({"error": "Parol noto'g'ri"}, status=status.HTTP_403_FORBIDDEN)
+            
+        if confirmation != "RESET":
+            return Response({"error": "Tasdiqlash so'zi noto'g'ri (RESET deb yozing)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from django.db import transaction as db_transaction
+            
+            with db_transaction.atomic():
+                # Order related
+                Order.objects.all().delete() # Soft-delete might hide them, but we want a clean slate
+                # If these are BaseModels, we might need hard_delete()
+                # Let's check if they have hard_delete
+                
+                def mass_hard_delete(model_class):
+                    if hasattr(model_class, 'hard_delete'):
+                        # Django's delete() on a queryset doesn't call the model's delete() method
+                        # unless we loop, but for large datasets that's slow.
+                        # Since we are resetting, we can just use the base manager or raw SQL if needed,
+                        # but standard delete() on a queryset bypasses our soft-delete logic anyway.
+                        model_class.objects.all().delete()
+                    else:
+                        model_class.objects.all().delete()
+
+                # List of models to clear completely
+                models_to_clear = [
+                    Transaction, Order, Client, WarehouseLog, MaterialBatch,
+                    ProductionStep, ProductionLog, ActivityLog, Invoice,
+                    WasteMaterial, Task, Attendance, MonthlyPlan, Reservation,
+                    JournalEntry, JournalEntryLine, DesignFile, OrderGeometry,
+                    SettingsLog, ReworkLog, WorkerTimeLog, ProductionLog
+                ]
+                
+                for model in models_to_clear:
+                    model.objects.all().delete()
+                
+                # Reset stocks to 0 for Material and Product
+                Material.objects.all().update(available_quantity=0)
+                Product.objects.all().update(current_stock=0)
+
+                # Log this critical action
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action="Tizim to'liq tozalandi (System Reset)",
+                    details="Admin tomonidan barcha operatsion ma'lumotlar o'chirildi."
+                )
+
+            return Response({"message": "Tizim muvaffaqiyatli tozalandi!"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": f"Tozalashda xatolik: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

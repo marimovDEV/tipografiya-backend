@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, ClientViewSet, MaterialViewSet,
     ProductViewSet, OrderViewSet, ProductionStepViewSet, InvoiceViewSet,
-    ProductionTemplateViewSet, TemplateStageViewSet, ProductionLogViewSet
+    ProductionTemplateViewSet, TemplateStageViewSet, ProductionLogViewSet,
+    SystemResetView
 )
 from .optimizer_views import (
     OptimizationView, DownloadDXFView, DielinePreviewView
@@ -100,6 +101,7 @@ urlpatterns = [
     path('settings/update-currency/', UpdateCurrencyRateView.as_view(), name='update-currency'),
     path('reports/', ReportsView.as_view(), name='reports'),
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('settings/reset-system/', SystemResetView.as_view(), name='reset-system'),
     path('login/', LoginView.as_view(), name='login'),
     path('orders/<int:pk>/print/', OrderViewSet.as_view({'get': 'print_receipt'}), name='order-print'),
     
