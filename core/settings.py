@@ -19,7 +19,6 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '84.54.28.96,tapi.pizzacentergar
 # Application definition
 
 INSTALLED_APPS = [
-    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -157,71 +156,3 @@ SPECTACULAR_SETTINGS = {
 
 # Telegram Bot
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-
-# Jazzmin Settings
-JAZZMIN_SETTINGS = {
-    "site_title": "PrintERP Admin",
-    "site_header": "PrintERP",
-    "site_brand": "PrintERP Boshqaruv",
-    "site_logo": "img/logo.png",
-    "login_logo": "img/logo.png",
-    "welcome_sign": "PrintERP ish boshqaruv tizimiga xush kelibsiz",
-    "copyright": "PrintERP Ltd",
-    "search_model": ["api.User", "api.Order"],
-    "user_avatar": "avatar_url",
-    "topmenu_links": [
-        {"name": "Bosh sahifa",  "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"name": "Buyurtmalar", "model": "api.Order"},
-        {"name": "Moliya", "model": "api.Transaction"},
-        {"name": "Ombor", "model": "api.Material"},
-    ],
-    "show_sidebar": True,
-    "navigation_expanded": True,
-    "icons": {
-        "auth": "fas fa-users-cog",
-        "api.user": "fas fa-user",
-        "api.order": "fas fa-shopping-cart",
-        "api.client": "fas fa-address-book",
-        "api.transaction": "fas fa-money-bill-wave",
-        "api.material": "fas fa-boxes",
-        "api.productiontemplate": "fas fa-file-invoice",
-        "api.productionstep": "fas fa-tasks",
-        "api.attendance": "fas fa-clock",
-    },
-    "order_with_respect_to": ["api", "auth"],
-    "theme": "flatly",
-    "dark_mode_theme": "darkly",
-    "show_ui_builder": True,
-}
-
-JAZZMIN_UI_TWEAKS = {
-    "navbar_small_text": False,
-    "footer_small_text": False,
-    "body_small_text": False,
-    "brand_small_text": False,
-    "brand_colour": "navbar-dark",
-    "accent": "accent-primary",
-    "navbar": "navbar-dark",
-    "no_navbar_border": False,
-    "navbar_fixed": False,
-    "layout_fixed": False,
-    "footer_fixed": False,
-    "sidebar_fixed": False,
-    "sidebar": "sidebar-dark-primary",
-    "sidebar_nav_small_text": False,
-    "sidebar_disable_expand": False,
-    "sidebar_nav_child_indent": False,
-    "sidebar_nav_compact_style": False,
-    "sidebar_nav_legacy_style": False,
-    "sidebar_nav_flat_style": False,
-    "theme": "flatly",
-    "dark_mode_theme": "darkly",
-    "button_classes": {
-        "primary": "btn-primary",
-        "secondary": "btn-secondary",
-        "info": "btn-info",
-        "warning": "btn-warning",
-        "danger": "btn-danger",
-        "success": "btn-success"
-    }
-}
