@@ -643,6 +643,21 @@ class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print("ORDER CREATION ERROR:\n", error_details)
+            # Log to a file as well just in case we can't see the console
+            with open('/tmp/order_error.log', 'a') as f:
+                f.write(f"\n--- {timezone.now()} ---\n{error_details}\n")
+            return Response({
+                "error": str(e),
+                "traceback": error_details
+            }, status=status.HTTP_400_BAD_REQUEST)
+
     def perform_create(self, serializer):
         """Override to auto-create production steps and initial transaction when order is created"""
         order = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
