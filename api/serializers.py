@@ -287,7 +287,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'payment_status', 'total_paid', 'status', 'deadline', 'completed_at', 'box_type',
             'quantity', 'price_per_unit', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
             'cutting_type', 'print_type', 'template', 'template_id',
-            'product_template', 'product_template_id',
+            'product_template', 'product_template_details',
             'production_steps', 'production_time_hours', 'is_delayed',
             'overall_progress', 'completed_quantity', 'book_name', 'page_count', 'cover_type',
             'binding_type', 'paper_weight', 'cover_weight', 'lamination', 'format'
