@@ -596,6 +596,9 @@ class Order(BaseModel):
         """
         Calculates total paid amount for this order from linked transactions.
         """
+        if not self.pk:
+            return Decimal('0')
+            
         # Sum of all income transactions linked to this order
         total = self.order_transactions.filter(type='income').aggregate(
             total=models.Sum('amount')
@@ -640,10 +643,15 @@ class Order(BaseModel):
             self.order_number = f"ORD-{date_str}-{new_num:03d}"
         
         # Automatic Payment Status Update
-        # Rely on the dynamic calculated_payment_status instead of just advance_payment
-        self.payment_status = self.calculated_payment_status
-
-        super().save(*args, **kwargs)
+        if is_new:
+            # First save to get a PK, then calculate status
+            super().save(*args, **kwargs)
+            self.payment_status = self.calculated_payment_status
+            super().save(update_fields=['payment_status'])
+        else:
+            # For updates, we can calculate before saving
+            self.payment_status = self.calculated_payment_status
+            super().save(*args, **kwargs)
 
     def check_and_update_status(self):
         """
