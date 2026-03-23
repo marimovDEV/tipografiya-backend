@@ -643,18 +643,6 @@ class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def create(self, request, *args, **kwargs):
-        try:
-            return super().create(request, *args, **kwargs)
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print("ORDER CREATION ERROR:\n", error_details)
-            return Response({
-                "error": "Server Xatosi: " + str(e),
-                "traceback": error_details
-            }, status=status.HTTP_400_BAD_REQUEST)
-
     def perform_create(self, serializer):
         """Override to auto-create production steps and initial transaction when order is created"""
         order = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
@@ -679,27 +667,27 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         # 2. Auto-create production steps
         try:
-            template_id = self.request.data.get('product_template_id')
-            if template_id:
-                try:
-                    product_template = ProductTemplate.objects.get(id=template_id)
-                    # Automatically create production steps from template routing
-                    routing_steps = product_template.routing_steps.all().order_by('sequence')
-                    
-                    for step in routing_steps:
-                        ProductionStep.objects.create(
-                            order=order,
-                            step=step.stage_name or step.step_name or "Noma'lum",
-                            sequence=step.sequence,
-                            status='pending',
-                            department=step.department,
-                            auto_start=step.auto_start,
-                            requires_operator=step.requires_operator,
-                            machine=step.machine,
-                            estimated_time_minutes=step.estimated_time_minutes
-                        )
-                except ProductTemplate.DoesNotExist:
-                    pass
+            product_template = order.product_template
+            
+            if product_template:
+                # Use the professional ProductTemplate model logic
+                from .models import ProductionStep
+                
+                # Automatically create production steps from template routing
+                routing_steps = product_template.routing_steps.all().order_by('sequence')
+                
+                for step in routing_steps:
+                    ProductionStep.objects.create(
+                        order=order,
+                        step=step.stage_name or step.step_name or "Noma'lum",
+                        sequence=step.sequence,
+                        status='pending',
+                        department=step.department,
+                        auto_start=step.auto_start,
+                        requires_operator=step.requires_operator,
+                        machine=step.machine,
+                        estimated_time_minutes=step.estimated_time_minutes
+                    )
             else:
                 # Fallback legacy logic
                 settings = PricingSettings.load()

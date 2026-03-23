@@ -207,7 +207,7 @@ class Client(BaseModel):
         
         # Balance = Payments - Orders. 
         # If -100,000, it means client owes 100,000 (debt).
-        return float(total_paid) - float(total_orders)
+        return Decimal(str(total_paid)) - Decimal(str(total_orders))
     
     @property
     def balance(self):
@@ -600,7 +600,7 @@ class Order(BaseModel):
         total = self.order_transactions.filter(type='income').aggregate(
             total=models.Sum('amount')
         )['total'] or 0
-        return float(total)
+        return Decimal(str(total))
 
     @property
     def calculated_payment_status(self):
@@ -609,7 +609,7 @@ class Order(BaseModel):
         Following the proposed systemic architecture.
         """
         paid = self.total_paid
-        price = float(self.total_price or 0)
+        price = Decimal(str(self.total_price or 0))
         
         if price <= 0:
             return 'unpaid'

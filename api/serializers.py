@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import models
+from decimal import Decimal
 from .models import (
     User, Client, Material, Product, Order, ProductionStep, 
     Invoice, PricingSettings, ActivityLog, Transaction,
@@ -7,8 +8,10 @@ from .models import (
     EmployeeEfficiency, MachineSettings,
     SystemLock, Calendar, Shift, Reservation, OrderGeometry,
     WasteMaterial, MonthlyPlan, Task, Attendance,
-    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion
+    ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion,
+    ProductTemplate
 )
+from .template_serializers import ProductTemplateSerializer
 
 class OrderGeometrySerializer(serializers.ModelSerializer):
     class Meta:
@@ -262,10 +265,13 @@ class OrderSerializer(serializers.ModelSerializer):
     client_id = serializers.PrimaryKeyRelatedField(
         queryset=Client.objects.all(), source='client', write_only=True
     )
-    template = ProductionTemplateSerializer(read_only=True)
     template_id = serializers.PrimaryKeyRelatedField(
         queryset=ProductionTemplate.objects.all(), source='template', write_only=True, required=False, allow_null=True
     )
+    product_template = serializers.PrimaryKeyRelatedField(
+        queryset=ProductTemplate.objects.all(), source='product_template', write_only=True, required=False, allow_null=True
+    )
+    product_template_details = ProductTemplateSerializer(source='product_template', read_only=True)
     production_steps = ProductionStepSerializer(many=True, read_only=True)
     production_time_hours = serializers.SerializerMethodField()
     is_delayed = serializers.SerializerMethodField()
@@ -280,8 +286,9 @@ class OrderSerializer(serializers.ModelSerializer):
             'id', 'order_number', 'client', 'client_id', 'total_price', 'total_cost', 'advance_payment',
             'payment_status', 'total_paid', 'status', 'deadline', 'completed_at', 'box_type',
             'quantity', 'price_per_unit', 'paper_type', 'paper_density', 'print_colors', 'lacquer_type',
-            'cutting_type', 'print_type', 'template',
-            'template_id', 'production_steps', 'production_time_hours', 'is_delayed',
+            'cutting_type', 'print_type', 'template', 'template_id',
+            'product_template', 'product_template_id',
+            'production_steps', 'production_time_hours', 'is_delayed',
             'overall_progress', 'completed_quantity', 'book_name', 'page_count', 'cover_type',
             'binding_type', 'paper_weight', 'cover_weight', 'lamination', 'format'
         ]
@@ -334,8 +341,8 @@ class OrderSerializer(serializers.ModelSerializer):
         client_obj = data.get('client')
         
         if client_obj:
-            current_debt = client_obj.current_debt
-            credit_limit = client_obj.credit_limit
+            current_debt = Decimal(str(client_obj.current_debt))
+            credit_limit = Decimal(str(client_obj.credit_limit))
             
             # If client is already over limit
             if current_debt > credit_limit:
