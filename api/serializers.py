@@ -344,6 +344,16 @@ class OrderSerializer(serializers.ModelSerializer):
                         f"DIQQAT: Mijoz qarzdorligi limitdan oshgan! (Qarz: {current_debt:,.0f} / Limit: {credit_limit:,.0f}). Yangi buyurtma yaratish taqiqlanadi."
                     ]
                 })
+                
+        advance_payment = data.get('advance_payment', 0)
+        total_price = data.get('total_price', 0)
+        
+        if advance_payment and total_price and advance_payment > total_price:
+            raise serializers.ValidationError({
+                "advance_payment": [
+                    "Avans summasi yakuniy narxdan ko'p bo'lishi mumkin emas."
+                ]
+            })
         
         return data
 
