@@ -16,7 +16,7 @@ from .models import (
     EmployeeEfficiency, MachineSettings, WasteMaterial, Task, Attendance,
     ProductionTemplate, TemplateStage, ProductionLog, Unit, UnitConversion,
     OrderGeometry, Reservation,
-    WorkerTimeLog, MonthlyPlan
+    WorkerTimeLog, MonthlyPlan, ProductTemplate
 )
 from .serializers import (
     UserSerializer, ClientSerializer, MaterialSerializer, 
