@@ -154,7 +154,6 @@ class PricingSettings(models.Model):
         return "Global Pricing Settings"
 
 class Client(BaseModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     STATUS_CHOICES = (
         ('new', 'Yangi'),
         ('regular', 'Doimiy'),
@@ -463,7 +462,6 @@ class TemplateStage(models.Model):
         return f"{self.template.name} - {self.sequence}: {self.stage_name}"
 
 class Order(BaseModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     PRIORITY_CHOICES = (
         ('normal', 'Normal'),
         ('high', 'High'),
