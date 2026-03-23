@@ -269,7 +269,7 @@ class OrderSerializer(serializers.ModelSerializer):
         queryset=ProductionTemplate.objects.all(), source='template', write_only=True, required=False, allow_null=True
     )
     product_template = serializers.PrimaryKeyRelatedField(
-        queryset=ProductTemplate.objects.all(), source='product_template', write_only=True, required=False, allow_null=True
+        queryset=ProductTemplate.objects.all(), write_only=True, required=False, allow_null=True
     )
     product_template_details = ProductTemplateSerializer(source='product_template', read_only=True)
     production_steps = ProductionStepSerializer(many=True, read_only=True)
