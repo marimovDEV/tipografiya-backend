@@ -814,7 +814,6 @@ class ProductionStep(models.Model):
     department = models.CharField(max_length=100, blank=True, null=True)
     auto_start = models.BooleanField(default=False)
     requires_operator = models.BooleanField(default=True)
-    machine = models.CharField(max_length=100, blank=True, null=True)
     estimated_time_minutes = models.IntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     

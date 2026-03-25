@@ -446,20 +446,27 @@ class ProductionAssignmentService:
         # 1. Template-Based Routing (Highest Priority)
         if order.product_template and hasattr(order.product_template, 'routing_steps') and order.product_template.routing_steps.exists():
             routing = order.product_template.routing_steps.all().order_by('sequence')
-            previous_step = None
-            
             with transaction.atomic():
                 for r in routing:
+                    # Use stage_name as primary, fallback to step_name
+                    step_name = r.stage_name or r.step_name or "Noma'lum"
                     step = ProductionStep.objects.create(
                         order=order,
-                        step=r.step_name,
+                        step=step_name,
+                        sequence=r.sequence,
                         status='pending',
+                        department=r.department,
+                        auto_start=r.auto_start,
+                        requires_operator=r.requires_operator,
+                        estimated_time_minutes=r.estimated_time_minutes,
                         depends_on_step=previous_step
                     )
                     
-                    if r.required_machine_type:
+                    if r.machine:
+                        # If a specific machine name is stored in the template, try to link it
+                        from .models import MachineSettings
                         machine = MachineSettings.objects.filter(
-                            machine_type__icontains=r.required_machine_type,
+                            name__icontains=r.machine,
                             is_active=True
                         ).first()
                         if machine:

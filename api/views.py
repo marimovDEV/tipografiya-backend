@@ -692,9 +692,11 @@ class OrderViewSet(viewsets.ModelViewSet):
                 routing_steps = product_template.routing_steps.all().order_by('sequence')
                 
                 for step in routing_steps:
+                    # Use stage_name as primary, fallback to step_name
+                    step_name = step.stage_name or step.step_name or "Noma'lum"
                     ProductionStep.objects.create(
                         order=order,
-                        step=step.stage_name or step.step_name or "Noma'lum",
+                        step=step_name,
                         sequence=step.sequence,
                         status='pending',
                         department=step.department,
