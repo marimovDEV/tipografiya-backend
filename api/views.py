@@ -570,6 +570,39 @@ class MaterialViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+    @action(detail=False, methods=['post'], url_path='bulk-reset')
+    def bulk_reset(self, request):
+        """DANGER: Clears all warehouse data."""
+        password = request.data.get('password')
+        confirmation = request.data.get('confirmation')
+        
+        RESET_PASSWORD = "RESET2024"
+        
+        if password != RESET_PASSWORD:
+            return Response({"error": "Parol noto'g'ri"}, status=status.HTTP_403_FORBIDDEN)
+            
+        if confirmation != "RESET":
+            return Response({"error": "Tasdiqlash so'zi noto'g'ri (RESET deb yozing)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from django.db import transaction as db_transaction
+            with db_transaction.atomic():
+                MaterialBatch.objects.all().delete()
+                WarehouseLog.objects.all().delete()
+                WasteMaterial.objects.all().delete()
+                Material.objects.all().delete()
+
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action="Omborxona to'liq tozalandi (Warehouse Reset)",
+                    details="Admin tomonidan barcha materiallar va omborxona tarixi o'chirildi."
+                )
+
+            return Response({"message": "Omborxona muvaffaqiyatli tozalandi!"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": f"Tozalashda xatolik: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class UnitViewSet(viewsets.ModelViewSet):
     queryset = Unit.objects.all().order_by('name')
     serializer_class = UnitSerializer
