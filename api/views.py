@@ -1763,7 +1763,7 @@ class CalculateOrderView(APIView):
             
             # Capacity status (simplified)
             capacity_status = {
-                'current_load': Order.objects.filter(status__in=['in_production', 'approved']).count(),
+                'current_load': Order.objects.filter(status__in=['in_production', 'approved'], is_deleted=False).count(),
                 'max_capacity': 20,
                 'status': 'normal'
             }
@@ -2171,7 +2171,7 @@ class ReportsView(APIView):
             )
 
         # Filters
-        order_filter = Q(created_at__range=(start_date, end_date))
+        order_filter = Q(created_at__range=(start_date, end_date), is_deleted=False)
         log_filter = Q(created_at__range=(start_date, end_date))
         step_filter = Q(completed_at__range=(start_date, end_date))
 
@@ -2278,12 +2278,12 @@ class DashboardView(APIView):
         start_of_month = today.replace(day=1)
         
         # 1. CORE STATS
-        total_orders = Order.objects.count()
-        active_orders = Order.objects.filter(status__in=['approved', 'in_production']).count()
+        total_orders = Order.objects.filter(is_deleted=False).count()
+        active_orders = Order.objects.filter(status__in=['approved', 'in_production'], is_deleted=False).count()
         
         # Today's Stats
-        today_orders_count = Order.objects.filter(created_at__date=today).count()
-        waiting_advance_count = Order.objects.filter(payment_status='unpaid').count()
+        today_orders_count = Order.objects.filter(created_at__date=today, is_deleted=False).count()
+        waiting_advance_count = Order.objects.filter(payment_status='unpaid', is_deleted=False).count()
         
         # Financial Today
         today_income = Transaction.objects.filter(type='income', date=today).aggregate(Sum('amount'))['amount__sum'] or 0
@@ -2304,10 +2304,11 @@ class DashboardView(APIView):
         today_efficiency = round(min(100.0, float(raw_efficiency)), 1)
 
         # Delayed Orders
-        delayed_orders_count = Order.objects.filter(deadline__lt=timezone.now(), status__in=['pending', 'in_production']).count()
+        delayed_orders_count = Order.objects.filter(deadline__lt=timezone.now(), status__in=['pending', 'in_production'], is_deleted=False).count()
         delayed_orders_list = Order.objects.filter(
             deadline__lt=timezone.now(), 
-            status__in=['pending', 'in_production']
+            status__in=['pending', 'in_production'],
+            is_deleted=False
         ).values('id', 'order_number', 'client__full_name', 'deadline')[:5]
 
         # 2. FINANCIALS (Monthly)
@@ -2321,7 +2322,7 @@ class DashboardView(APIView):
         # Let's calculate estimated profit for completed orders this month.
         
         # Calculate actual revenue from finished orders
-        completed_orders_month = Order.objects.filter(status='completed', completed_at__date__gte=start_of_month)
+        completed_orders_month = Order.objects.filter(status='completed', completed_at__date__gte=start_of_month, is_deleted=False)
         order_financials = completed_orders_month.aggregate(
             total_rev=Sum('total_price')
         )
@@ -2339,9 +2340,10 @@ class DashboardView(APIView):
         
         # 4. ALERTS / URGENT
         # Orders due today
-        due_today_count = Order.objects.filter(deadline__date=today, status__in=['pending', 'in_production']).count()
+        due_today_count = Order.objects.filter(deadline__date=today, status__in=['pending', 'in_production'], is_deleted=False).count()
         due_today_list = Order.objects.filter(
-            deadline__date=today, status__in=['pending', 'in_production']
+            deadline__date=today, status__in=['pending', 'in_production'],
+            is_deleted=False
         ).values('id', 'order_number', 'client__full_name')[:5]
 
         # Low Stock
