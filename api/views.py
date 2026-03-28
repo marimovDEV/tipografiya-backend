@@ -1763,7 +1763,7 @@ class CalculateOrderView(APIView):
             
             # Capacity status (simplified)
             capacity_status = {
-                'current_load': Order.objects.filter(status__in=['in_production', 'approved'], is_deleted=False).count(),
+                'current_load': Order.objects.filter(status__in=['pending', 'approved', 'in_production', 'ready'], is_deleted=False).count(),
                 'max_capacity': 20,
                 'status': 'normal'
             }
@@ -2279,7 +2279,7 @@ class DashboardView(APIView):
         
         # 1. CORE STATS
         total_orders = Order.objects.filter(is_deleted=False).count()
-        active_orders = Order.objects.filter(status__in=['approved', 'in_production'], is_deleted=False).count()
+        active_orders = Order.objects.filter(status__in=['pending', 'approved', 'in_production', 'ready'], is_deleted=False).count()
         
         # Today's Stats
         today_orders_count = Order.objects.filter(created_at__date=today, is_deleted=False).count()
@@ -2340,9 +2340,10 @@ class DashboardView(APIView):
         
         # 4. ALERTS / URGENT
         # Orders due today
-        due_today_count = Order.objects.filter(deadline__date=today, status__in=['pending', 'in_production'], is_deleted=False).count()
+        due_today_count = Order.objects.filter(deadline__date=today, status__in=['pending', 'approved', 'in_production'], is_deleted=False).count()
         due_today_list = Order.objects.filter(
-            deadline__date=today, status__in=['pending', 'in_production'],
+            deadline__date=today, 
+            status__in=['pending', 'approved', 'in_production'],
             is_deleted=False
         ).values('id', 'order_number', 'client__full_name')[:5]
 
